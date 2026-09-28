@@ -1,0 +1,22 @@
+schema_version = "1.0.0"
+
+id = "postproject_relink"
+version = "0.1.0"
+name = "PostProject Relink"
+tagline = "Relink missing sequencer media by content"
+maintainer = "PostProject contributors"
+type = "add-on"
+website = "https://github.com/postproject-org/postproject-blender"
+tags = ["Sequencer", "Pipeline"]
+
+blender_version_min = "5.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+# tools/build.py adds `platforms` and `wheels` for each platform it builds.
+
+[permissions]
+files = "Record sequencer media in a production and relink it"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "/.git/", "*.zip"]

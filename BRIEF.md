@@ -91,9 +91,9 @@ files, or build proxies. It adds *Blender Projects* and fixes one detail of
 *Find Missing Files*. Both bear on where a PostProject production belongs and
 what the extension should leave to Blender.
 
-**Projects.** A folder containing `.blender_project/config.toml` is a project
+**Projects.** A folder containing `.blender_project/project.toml` is a project
 root, and every file below it belongs to that project
-(`scripts/startup/bl_operators/project.py:50`, `:405`). Opening a file inside a
+(`scripts/startup/bl_operators/project.py:50`–`51`, `:405`). Opening a file inside a
 project loads the project (`project.py:364`), and Python reaches it as
 `bpy.data.project` (`makesrna/intern/rna_main.cc:664`) with a name, a
 `root_path`, variables, and asset libraries
@@ -162,22 +162,26 @@ content, and nothing tells the user.
 ## Smallest PostProject experiment
 
 This is a resolver experiment, delivered as an extension with no change to
-Blender. On `save_post`, the extension records each movie, sound, and image
+Blender. On `save_pre`, the extension records each movie, sound, and image
 strip whose files exist in a production: `<project_root>/postproject.pproj`
 when the file belongs to a Blender 5.3 project, otherwise a sidecar `film.pproj`
-next to `film.blend`. A movie or sound strip becomes an asset with a single-file
-representation. An image strip becomes one image-sequence representation.
+next to `film.blend`. It records before the file is written because it may
+change a strip's UUID, which must be saved with it. A movie or sound strip
+becomes an asset with a single-file representation. An image strip becomes one
+image-sequence representation.
 
 Blender has no durable strip identity, so the extension gives each strip a UUID
 in a string custom property and records it as an application identifier with
 the qualifier `org.blender:strip_uuid`. It is the one change the extension
-makes to a `.blend` file. Duplicating a strip copies the property, so on save
-the extension gives every strip after the first with a duplicated UUID a new
-one. In a project production, several `.blend` files, and copies made with
-*Save As*, can carry the same UUID. The UUID names the media the strip uses,
-so that is intended, but a strip whose files were changed with *Change
-Data/Files* must be recorded as different media on the next save. Search
-directories are never recorded.
+makes to a `.blend` file. The UUID names the media the strip uses, not the
+strip. Cutting or duplicating a strip copies the property, and the pieces keep
+sharing one asset, as they share one file. A strip whose files were changed
+with *Change Data/Files* gets a new UUID on the next save and is recorded as
+new media. In a project production, several `.blend` files, and copies made
+with *Save As*, can carry the same UUID, which is intended for the same
+reason. A host-object binding would tie the strip to one production, and a
+*Save As* next to a new sidecar would leave every binding pointing at the old
+one. Search directories are never recorded.
 
 The extension adds *Find Missing Media by Content* next to *Find Missing
 Files*. The operator resolves every recorded strip with a missing file in one
