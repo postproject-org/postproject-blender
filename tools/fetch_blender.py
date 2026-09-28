@@ -23,11 +23,17 @@ RELEASES = {
     ),
 }
 DAILY = "https://builder.blender.org/download/daily/?format=json&v=1"
+# Blender's servers refuse Python's default user agent.
+HEADERS = {"User-Agent": "postproject-blender (+https://github.com/postproject-org/postproject-blender)"}
+
+
+def fetch(url: str):
+    return urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS))
 
 
 def daily(version: str) -> tuple[str, str]:
     number, _, cycle = version.partition("-")
-    with urllib.request.urlopen(DAILY) as response:
+    with fetch(DAILY) as response:
         builds = json.load(response)
     for build in builds:
         if (
@@ -36,7 +42,7 @@ def daily(version: str) -> tuple[str, str]:
             and build["version"].startswith(number)
             and build["release_cycle"] == cycle
         ):
-            with urllib.request.urlopen(build["url"] + ".sha256") as response:
+            with fetch(build["url"] + ".sha256") as response:
                 return build["url"], response.read().decode().split()[0]
     raise SystemExit(f"no daily Linux build of Blender {version}")
 
@@ -46,7 +52,7 @@ def main() -> None:
     url, sha256 = RELEASES[version] if version in RELEASES else daily(version)
     with tempfile.TemporaryDirectory() as scratch:
         archive = Path(scratch) / "blender.tar.xz"
-        with urllib.request.urlopen(url) as response, archive.open("wb") as out:
+        with fetch(url) as response, archive.open("wb") as out:
             shutil.copyfileobj(response, out)
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         if digest != sha256:
