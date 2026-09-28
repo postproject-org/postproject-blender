@@ -4,7 +4,9 @@ Checked on 2026-09-28 against Blender tag `v5.2.2`, commit
 `d13f752e3b9c4f8c261cda552b1021f8bcc0382c` (committed 2026-09-14), the latest
 stable release. Line numbers refer to that commit. None of the search, strip,
 proxy, or library logic cited below differs in substance on `main` at
-`cc91a792` (2026-09-27, version 5.3 alpha).
+`b2e7faa4` (2026-09-28, version 5.3 alpha). What 5.3 adds around projects and
+paths is described [below](#in-blender-53-alpha), with line numbers for that
+commit.
 
 ## Current behavior
 
@@ -73,6 +75,80 @@ file events through `bpy.app.handlers`, among them `load_post` and `save_post`
 `SequenceEditor.strips_all` lists every strip, including those inside meta
 strips (`rna_sequencer.cc:2955`).
 
+**Rewriting paths from Python.** `bpy.data.file_path_foreach()` calls a
+function for every external path and replaces a path with the string it
+returns. It is Blender's supported way for scripts, such as render-farm
+packers, to remap paths. For a strip, the visited data-block is the scene, not
+the strip, and an image strip is visited once per frame; each rewritten frame
+also sets the strip's directory (`blenkernel/intern/scene.cc:1005`–`1043` on
+`main`). The metadata object says only whether a path is expanded, a cache, or
+read-only.
+
+## In Blender 5.3 alpha
+
+Blender 5.3 changes nothing about how strips reference files, find missing
+files, or build proxies. It adds *Blender Projects* and fixes one detail of
+*Find Missing Files*. Both bear on where a PostProject production belongs and
+what the extension should leave to Blender.
+
+**Projects.** A folder containing `.blender_project/config.toml` is a project
+root, and every file below it belongs to that project
+(`scripts/startup/bl_operators/project.py:50`, `:405`). Opening a file inside a
+project loads the project (`project.py:364`), and Python reaches it as
+`bpy.data.project` (`makesrna/intern/rna_main.cc:664`) with a name, a
+`root_path`, variables, and asset libraries
+(`makesrna/intern/rna_blender_project.cc:793`–`857`). A project is currently
+defined by the open file; an open design proposes the working directory instead
+([#162176](https://projects.blender.org/blender/blender/issues/162176)). The
+project's design principle is that its settings stay human-readable and
+diffable ([#133001](https://projects.blender.org/blender/blender/issues/133001)).
+
+**Project variables.** A project defines typed variables. A string variable
+with subtype `FILEPATH` is a directory such as footage storage
+(`rna_blender_project.cc:605`–`616`), and `{project_root}` and
+`{project_name}` are built in (`blenkernel/intern/path_templates.cc:296`–`298`).
+Variables are substituted only in paths that accept templates: render and
+file-output paths (`rna_scene.cc:7675`, `rna_nodetree.cc:7121`) and project
+asset-library paths (`rna_userdef.cc:7209`–`7210`, flag
+`PROP_VARIABLES_PROJECT`, `RNA_types.hh:577`). Strip sources do not accept
+them (`rna_sequencer.cc:3374`, `:3579`). A `FILEPATH` variable is the closest
+Blender comes to a PostProject logical root: a portable name with a
+machine-local directory.
+
+**Find Missing Files.** After a search that changed paths, Blender 5.3 refreshes
+every scene's sequencer so found media plays without *Refresh All*
+(`editors/space_info/info_ops.cc:539`–`545`, commit `d19a9b13`). In 5.2 a
+script that rewrites strip paths has to refresh the sequencer itself.
+
+**Not yet in code.** *VSE: Media Bin*
+([#154922](https://projects.blender.org/blender/blender/issues/154922)) is an
+open design. Strips would reference image, sound, and scene data-blocks
+organized in bins, and the design names the bin as the place to manage
+proxies. A *Virtual File System*
+([#158319](https://projects.blender.org/blender/blender/issues/158319)) is a
+design expected to take years, listing file relocation without rewriting
+references among its goals. Neither has code on `main`.
+
+**Consequences for the pilot.**
+
+- The production belongs to the project when there is one. Inside a project,
+  the extension uses one production, `<project_root>/postproject.pproj`, for
+  every `.blend` file in it, and searches the project root and every `FILEPATH`
+  variable's directory. It writes nothing into `.blender_project/`, whose
+  contents Blender keeps human-readable. Without a project, and in 5.2, it uses
+  the `<file>.pproj` sidecar. The extension never creates a project or a
+  variable.
+- Relinking goes through `bpy.data.file_path_foreach()`, mapping each missing
+  path to its found path, rather than editing strip fields. That is the path
+  API Blender maintains and that media data-blocks from the Media Bin would
+  also pass through. The extension refreshes the sequencer only where Blender
+  does not (5.2).
+- The strip UUID is held behind one adapter function, so it can move to a media
+  data-block if the Media Bin lands.
+- Proxies stay out of scope. If the Media Bin becomes the place that manages
+  proxies, a managed-proxy experiment on today's `BL_proxy` folders would be
+  obsolete.
+
 ## User pain
 
 Media renamed or reorganized outside Blender, such as graded shots renamed
@@ -87,8 +163,9 @@ content, and nothing tells the user.
 
 This is a resolver experiment, delivered as an extension with no change to
 Blender. On `save_post`, the extension records each movie, sound, and image
-strip whose files exist in a sidecar production `film.pproj` next to
-`film.blend`. A movie or sound strip becomes an asset with a single-file
+strip whose files exist in a production: `<project_root>/postproject.pproj`
+when the file belongs to a Blender 5.3 project, otherwise a sidecar `film.pproj`
+next to `film.blend`. A movie or sound strip becomes an asset with a single-file
 representation. An image strip becomes one image-sequence representation.
 
 Blender has no durable strip identity, so the extension gives each strip a UUID
@@ -96,24 +173,31 @@ in a string custom property and records it as an application identifier with
 the qualifier `org.blender:strip_uuid`. It is the one change the extension
 makes to a `.blend` file. Duplicating a strip copies the property, so on save
 the extension gives every strip after the first with a duplicated UUID a new
-one. Search directories are never recorded.
+one. In a project production, several `.blend` files, and copies made with
+*Save As*, can carry the same UUID. The UUID names the media the strip uses,
+so that is intended, but a strip whose files were changed with *Change
+Data/Files* must be recorded as different media on the next save. Search
+directories are never recorded.
 
 The extension adds *Find Missing Media by Content* next to *Find Missing
 Files*. The operator resolves every recorded strip with a missing file in one
-PostProject call. It searches the `.blend` file's folder and each strip's
-former folders as unnamed search directories, and relinks a strip only when
-exactly one candidate is found. For an image strip, all frames are relinked
+PostProject call. It searches the `.blend` file's folder, the project root and
+every `FILEPATH` project variable's directory when there is a project, and each
+strip's former folders, all as unnamed search directories. It relinks a strip
+only when exactly one candidate is found, by rewriting its paths through
+`bpy.data.file_path_foreach()`. For an image strip, all frames are relinked
 together from one representation, or none are. An ambiguous or missing strip
 is listed in the report and left for *Find Missing Files* or manual repair.
 Nothing runs when a file is opened unless the user enables that in the
 extension's preferences.
 
-Proxies as managed artifacts would come second. Unlike Kdenlive, Blender builds
-proxies in-process in a window-manager job. The extension cannot run as that
-job's worker, and Python gets no notice when the job finishes. It would have to
-start the rebuild itself, watch for the job's end with a timer, and then record
-the proxy files. Whether that is dependable enough is the open question of the
-second experiment.
+Proxies as managed artifacts are not part of this pilot. Unlike Kdenlive,
+Blender builds proxies in-process in a window-manager job. The extension cannot
+run as that job's worker, and Python gets no notice when the job finishes. It
+would have to start the rebuild itself, watch for the job's end with a timer,
+and then record the proxy files. The Media Bin design names the bin as the
+place to manage proxies, so that experiment waits for Blender's own proxy
+model.
 
 ## Files and modules that change
 
@@ -136,7 +220,8 @@ no service runs.
 ## How to remove or revert it
 
 Disable or uninstall the extension, and Blender behaves as before. Deleting a
-`.pproj` sidecar forgets that file's recorded media. The strip UUID properties
+`.pproj` sidecar forgets that file's recorded media, and deleting
+`<project_root>/postproject.pproj` forgets the project's. The strip UUID properties
 stay in `.blend` files saved with the extension. They are inert and can be
 deleted from each strip's custom properties.
 
@@ -156,8 +241,10 @@ PostProject artifacts, and its tests run in background Blender on Linux in CI.
   `org.blender:strip_uuid`. A host binding (ADR 0011) would replace it once
   Blender persists PostProject identities itself.
 - **Database owner and location:** the extension creates and updates
-  `<file>.pproj` next to `<file>.blend` on every save. The `.blend` file stays
-  authoritative. The sidecar holds only content identity and locations.
+  `<project_root>/postproject.pproj` for files in a Blender project, and
+  `<file>.pproj` next to `<file>.blend` otherwise, on every save. It follows
+  Blender's project and never defines one of its own. The `.blend` file stays
+  authoritative. The production holds only content identity and locations.
 - **PostProject or database absent:** without the extension nothing changes. A
   missing or unreadable sidecar makes the operator report that nothing is
   recorded, and *Find Missing Files* works as before. A missing sidecar is
