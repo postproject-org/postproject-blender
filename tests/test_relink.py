@@ -160,8 +160,6 @@ class RelinkTest(unittest.TestCase):
             self.strip_named("A001").filepath, "//rushes/day1/A001-day1.mkv"
         )
 
-    # PostProject finds a moved sequence only under its recorded file names.
-    @unittest.expectedFailure
     def test_renamed_image_sequence_is_relinked_as_a_whole(self):
         frames = make_frames(self.root / "plates", "shot_", 3)
         strip = self.editor.strips.new_image("plate", str(frames[0]), 1, 1)

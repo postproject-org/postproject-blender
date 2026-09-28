@@ -85,6 +85,11 @@ def relink(paths: dict[Path, Path]) -> int:
     """
 
     wanted = {str(old): new for old, new in paths.items()}
+    # Rewriting one frame of an image strip also moves the strip's shared
+    # directory, so its later frames are visited under the new directory with
+    # their old names.
+    for old, new in paths.items():
+        wanted.setdefault(str(new.parent / old.name), new)
     changed = 0
 
     def visit(owner, path, _meta):

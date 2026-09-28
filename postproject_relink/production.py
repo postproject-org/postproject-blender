@@ -31,7 +31,14 @@ class Sequence:
     step: int
 
     def filename(self, frame: int) -> str:
-        return f"{self.prefix}{frame:0{self.padding}d}{self.suffix}"
+        return self.naming.filename(frame)
+
+    @property
+    def naming(self) -> pp.SequenceNaming:
+        return pp.SequenceNaming(self.prefix, self.suffix, self.padding)
+
+    def frames(self) -> range:
+        return range(self.start, self.end + 1, self.step)
 
 
 @dataclass(frozen=True)
@@ -207,21 +214,27 @@ def _matches(
     original = _original(prod, asset)
     resource = original.resources[0]
     if strip.sequence is not None:
-        if original.image_sequence is None:
-            return False
-        uri = pp.file_locator(strip.sequence.directory)
+        sequence = strip.sequence
         descriptor = original.image_sequence
-        if (descriptor.prefix, descriptor.suffix, descriptor.start, descriptor.end) != (
-            strip.sequence.prefix,
-            strip.sequence.suffix,
-            strip.sequence.start,
-            strip.sequence.end,
+        if descriptor is None or (descriptor.start, descriptor.end) != (
+            sequence.start,
+            sequence.end,
         ):
             return False
-        known = {locator.uri for locator in resource.locators}
-        if uri not in known:
-            tx.confirm_locator(resource.id, uri)
-        _retire_vanished(tx, resource, uri)
+        uri = pp.file_locator(sequence.directory)
+        known = {
+            (locator.uri, locator.sequence_naming) for locator in resource.locators
+        }
+        if (uri, sequence.naming) not in known:
+            # A sequence found under new names is recorded with them, beside
+            # its former locators, once its content is the recorded content.
+            verification = prod.verify_resource(
+                resource.id, sequence.directory, sequence_naming=sequence.naming
+            )
+            if verification is not pp.ContentVerification.MATCHES:
+                return False
+            tx.confirm_locator(resource.id, uri, sequence_naming=sequence.naming)
+        _retire_vanished(tx, resource, uri, sequence.naming, sequence.start)
         return True
     if len(strip.paths) != 1 or original.image_sequence is not None:
         return False
@@ -245,11 +258,21 @@ def _matches(
     return True
 
 
-def _retire_vanished(tx: pp.Transaction, resource: pp.Resource, current: str) -> None:
+def _retire_vanished(
+    tx: pp.Transaction,
+    resource: pp.Resource,
+    current: str,
+    naming: pp.SequenceNaming | None = None,
+    first_frame: int = 0,
+) -> None:
+    """Retire every other locator whose files are gone."""
+
     for locator in resource.locators:
-        if locator.uri == current:
+        if (locator.uri, locator.sequence_naming) == (current, naming):
             continue
         path = pp.locator_file_path(locator.uri)
+        if locator.sequence_naming is not None:
+            path = path / locator.sequence_naming.filename(first_frame)
         if not path.exists():
             tx.retire_locator(locator.id)
 
@@ -260,9 +283,7 @@ def _import(tx: pp.Transaction, strip: StripMedia, uuid: str) -> pp.AssetId:
         sequence = strip.sequence
         source = pp.ImageSequenceSource(
             directory=sequence.directory,
-            prefix=sequence.prefix,
-            suffix=sequence.suffix,
-            padding=sequence.padding,
+            naming=sequence.naming,
             start=sequence.start,
             end=sequence.end,
             step=sequence.step,
@@ -320,7 +341,12 @@ def _relink(strip: StripMedia, resolution: pp.RepresentationResolution) -> Relin
     if strip.sequence is None:
         paths = {strip.paths[0]: found}
     else:
-        paths = {path: found / path.name for path in strip.paths}
+        # A renamed sequence is found under the names of its new location.
+        naming = candidate.sequence_naming or strip.sequence.naming
+        paths = {
+            path: found / naming.filename(frame)
+            for path, frame in zip(strip.paths, strip.sequence.frames(), strict=True)
+        }
     if not all(new.is_file() for new in paths.values()):
         return Relink(strip.uuid, strip.name, "missing", detail="incomplete sequence")
     return Relink(strip.uuid, strip.name, "relinked", paths)
