@@ -24,7 +24,9 @@ RELEASES = {
 }
 DAILY = "https://builder.blender.org/download/daily/?format=json&v=1"
 # Blender's servers refuse Python's default user agent.
-HEADERS = {"User-Agent": "postproject-blender (+https://github.com/postproject-org/postproject-blender)"}
+HEADERS = {
+    "User-Agent": "postproject-blender (+https://github.com/postproject-org/postproject-blender)"
+}
 
 
 def fetch(url: str):

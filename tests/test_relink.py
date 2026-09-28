@@ -10,7 +10,6 @@ import struct
 import sys
 import tempfile
 import unittest
-import uuid
 import wave
 import zlib
 from pathlib import Path
@@ -121,7 +120,7 @@ class RelinkTest(unittest.TestCase):
         self.scene = bpy.context.scene
         self.editor = self.scene.sequence_editor
 
-    def strip(self, name):
+    def strip_named(self, name):
         return self.editor.strips_all[name]
 
     def find(self):
@@ -144,7 +143,7 @@ class RelinkTest(unittest.TestCase):
         movie.rename(graded)
         self.reopen()
         self.assertEqual(self.find(), {"FINISHED"})
-        self.assertEqual(absolute(self.strip("A001").filepath), graded)
+        self.assertEqual(absolute(self.strip_named("A001").filepath), graded)
 
     def test_relative_path_stays_relative(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
@@ -157,7 +156,9 @@ class RelinkTest(unittest.TestCase):
         movie.rename(day / "A001-day1.mkv")
         self.reopen()
         self.find()
-        self.assertEqual(self.strip("A001").filepath, "//rushes/day1/A001-day1.mkv")
+        self.assertEqual(
+            self.strip_named("A001").filepath, "//rushes/day1/A001-day1.mkv"
+        )
 
     # PostProject finds a moved sequence only under its recorded file names.
     @unittest.expectedFailure
@@ -173,7 +174,7 @@ class RelinkTest(unittest.TestCase):
             frame.rename(graded / frame.name.replace("shot_", "shot-graded_"))
         self.reopen()
         self.find()
-        strip = self.strip("plate")
+        strip = self.strip_named("plate")
         self.assertEqual(absolute(strip.directory), graded)
         self.assertEqual(
             [element.filename for element in strip.elements],
@@ -190,7 +191,7 @@ class RelinkTest(unittest.TestCase):
         shutil.move(self.root / "plates", moved)
         self.reopen()
         self.find()
-        self.assertEqual(absolute(self.strip("plate").directory), moved)
+        self.assertEqual(absolute(self.strip_named("plate").directory), moved)
 
     def test_incomplete_sequence_is_not_relinked(self):
         frames = make_frames(self.root / "plates", "shot_", 3)
@@ -206,7 +207,7 @@ class RelinkTest(unittest.TestCase):
         self.reopen()
         self.find()
         self.assertEqual(
-            absolute(self.strip("plate").directory), self.root / "plates"
+            absolute(self.strip_named("plate").directory), self.root / "plates"
         )
 
     def test_identical_copies_are_left_to_the_user(self):
@@ -219,7 +220,7 @@ class RelinkTest(unittest.TestCase):
         movie.unlink()
         self.reopen()
         self.find()
-        self.assertEqual(absolute(self.strip("A001").filepath), movie)
+        self.assertEqual(absolute(self.strip_named("A001").filepath), movie)
 
     def test_different_file_with_the_same_name_is_not_taken(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
@@ -229,7 +230,7 @@ class RelinkTest(unittest.TestCase):
         make_movie(self.root / "other" / "A001.mkv", (0, 0, 1))
         self.reopen()
         self.find()
-        self.assertEqual(absolute(self.strip("A001").filepath), movie)
+        self.assertEqual(absolute(self.strip_named("A001").filepath), movie)
 
     def test_sound_strip_and_its_sound_are_relinked(self):
         sound = make_sound(self.root / "audio" / "voice.wav", 3)
@@ -240,7 +241,7 @@ class RelinkTest(unittest.TestCase):
         sound.rename(moved)
         self.reopen()
         self.find()
-        self.assertEqual(absolute(self.strip("voice").sound.filepath), moved)
+        self.assertEqual(absolute(self.strip_named("voice").sound.filepath), moved)
 
     def test_cut_strips_share_their_media(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
@@ -253,7 +254,9 @@ class RelinkTest(unittest.TestCase):
         movie.rename(moved)
         self.reopen()
         self.find()
-        self.assertEqual({absolute(s.filepath) for s in self.editor.strips_all}, {moved})
+        self.assertEqual(
+            {absolute(s.filepath) for s in self.editor.strips_all}, {moved}
+        )
 
     def test_duplicate_given_other_media_gets_its_own_uuid(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
@@ -266,7 +269,8 @@ class RelinkTest(unittest.TestCase):
         self.assertNotEqual(copy["postproject_uuid"], strip["postproject_uuid"])
         self.reopen()
         self.assertNotEqual(
-            self.strip("B001")["postproject_uuid"], self.strip("A001")["postproject_uuid"]
+            self.strip_named("B001")["postproject_uuid"],
+            self.strip_named("A001")["postproject_uuid"],
         )
 
     def test_missing_sidecar_changes_nothing(self):
@@ -277,7 +281,7 @@ class RelinkTest(unittest.TestCase):
         movie.rename(self.root / "moved.mkv")
         self.reopen()
         self.assertEqual(self.find(), {"CANCELLED"})
-        self.assertEqual(absolute(self.strip("A001").filepath), movie)
+        self.assertEqual(absolute(self.strip_named("A001").filepath), movie)
 
     def test_unreadable_sidecar_changes_nothing(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
@@ -287,7 +291,7 @@ class RelinkTest(unittest.TestCase):
         movie.rename(self.root / "moved.mkv")
         self.reopen()
         self.assertEqual(self.find(), {"CANCELLED"})
-        self.assertEqual(absolute(self.strip("A001").filepath), movie)
+        self.assertEqual(absolute(self.strip_named("A001").filepath), movie)
 
     def test_find_on_load_when_enabled(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
@@ -301,7 +305,7 @@ class RelinkTest(unittest.TestCase):
             self.reopen()
         finally:
             preferences.find_on_load = False
-        self.assertEqual(absolute(self.strip("A001").filepath), moved)
+        self.assertEqual(absolute(self.strip_named("A001").filepath), moved)
 
     def test_nothing_runs_on_load_by_default(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
@@ -309,7 +313,7 @@ class RelinkTest(unittest.TestCase):
         self.save()
         movie.rename(self.root / "moved.mkv")
         self.reopen()
-        self.assertEqual(absolute(self.strip("A001").filepath), movie)
+        self.assertEqual(absolute(self.strip_named("A001").filepath), movie)
 
 
 @unittest.skipUnless(bpy.app.version >= (5, 3, 0), "Blender projects need 5.3")
@@ -359,7 +363,9 @@ class ProjectTest(unittest.TestCase):
         bpy.ops.wm.open_mainfile(filepath=str(self.blend))
         bpy.ops.postproject.find_missing_media()
         strip = bpy.context.scene.sequence_editor.strips_all["A001"]
-        self.assertEqual(absolute(strip.filepath), new_storage / "day1" / "A001-day1.mkv")
+        self.assertEqual(
+            absolute(strip.filepath), new_storage / "day1" / "A001-day1.mkv"
+        )
 
 
 class DisabledTest(unittest.TestCase):

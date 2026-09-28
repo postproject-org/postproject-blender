@@ -41,14 +41,13 @@ Disable or uninstall the extension and Blender behaves as before. The
 
 ## Build and test
 
-The extension bundles PostProject's platform-neutral Python wheel and the
-native library for one platform. `tools/build.py` assembles the package from
-those two release artifacts:
+The extension bundles one PostProject platform wheel, which carries the
+Python binding and the native library of the same build. `tools/build.py`
+builds the package for that wheel's platform:
 
 ```sh
 tools/build.py --blender /path/to/blender \
-  --wheel postproject-0.4.0a1-py3-none-any.whl \
-  --library libpostproject.so --platform linux-x64
+  --wheel postproject-0.4.0a1-py3-none-manylinux_2_28_x86_64.whl
 ```
 
 To build both from a PostProject checkout and run the tests in background

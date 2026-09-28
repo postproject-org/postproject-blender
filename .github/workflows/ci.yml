@@ -23,6 +23,15 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: postproject-org/postproject-blender
+      - run: pipx run ruff==0.16.8 check postproject_relink tests tools
+      - run: pipx run ruff==0.16.8 format --check postproject_relink tests tools
+
   blender:
     name: Blender ${{ matrix.blender }}
     runs-on: ubuntu-latest

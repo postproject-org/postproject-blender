@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 import uuid
 from fractions import Fraction
+from itertools import pairwise
 from pathlib import Path
 
 import bpy
@@ -64,7 +65,9 @@ def strip_media(scene, strip, uuid_value: str) -> StripMedia | None:
     if sequence is None:
         # Frames that are not one numbered sequence are left to Blender.
         return None
-    rate = Fraction(scene.render.fps) / Fraction(scene.render.fps_base).limit_denominator(1001)
+    rate = Fraction(scene.render.fps) / Fraction(
+        scene.render.fps_base
+    ).limit_denominator(1001)
     return StripMedia(
         uuid_value,
         strip.name,
@@ -112,7 +115,7 @@ def _refresh() -> None:
 
     if bpy.app.version >= (5, 3, 0):
         return
-    for scene, strip in media_strips():
+    for _scene, strip in media_strips():
         if strip.type == "MOVIE":
             strip.filepath = strip.filepath
         elif strip.type == "IMAGE":
@@ -141,10 +144,14 @@ def _sequence(directory: Path, names: list[str]) -> Sequence | None:
     padding = len(matches[0]["frame"])
     frames = []
     for match in matches:
-        if (match["prefix"], match["suffix"], len(match["frame"])) != (prefix, suffix, padding):
+        if (match["prefix"], match["suffix"], len(match["frame"])) != (
+            prefix,
+            suffix,
+            padding,
+        ):
             return None
         frames.append(int(match["frame"]))
     step = frames[1] - frames[0]
-    if step <= 0 or any(b - a != step for a, b in zip(frames, frames[1:])):
+    if step <= 0 or any(b - a != step for a, b in pairwise(frames)):
         return None
     return Sequence(directory, prefix, suffix, padding, frames[0], frames[-1], step)

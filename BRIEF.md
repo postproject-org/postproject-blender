@@ -213,13 +213,17 @@ script producing one extension zip per platform.
 
 ## Additional dependency cost
 
-The extension bundles the platform-neutral `postproject` wheel (pure Python,
-requires 3.11 or newer) and PostProject's native library for its platform
-(about 4.5 MiB, SQLite included). The binding loads the library from an explicit
-path, so the extension passes `library_path=` next to its own files and never
-reads `POSTPROJECT_LIBRARY`. Because of the native library, the extension is
-built per platform and declares `platforms`. Blender itself gains nothing, and
-no service runs.
+The extension bundles PostProject's platform wheel for its platform: the
+binding (pure Python, 3.11 or newer) and the native library of the same build
+(about 4.5 MiB, SQLite included). The binding loads the library inside the
+wheel, so the extension names no library path and never sets
+`POSTPROJECT_LIBRARY`. Blender installs the wheels of all extensions into one
+`site-packages` and keeps only the newest wheel of each name
+(`scripts/modules/_bpy_internal/extensions/wheel_manager.py`), so another
+extension may bring a newer PostProject; its wheel then brings its own
+matching library. The Linux wheel requires glibc 2.28, as Blender does. The
+extension is built per platform and declares `platforms`. Blender itself
+gains nothing, and no service runs.
 
 ## How to remove or revert it
 

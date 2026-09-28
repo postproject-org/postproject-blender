@@ -3,19 +3,15 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+from typing import ClassVar
 
 import bpy
 from bpy.app.handlers import persistent
 
-_LIBRARY_NAMES = {
-    "linux": "libpostproject.so",
-    "darwin": "libpostproject.dylib",
-    "win32": "postproject.dll",
-}
-#: The native library shipped next to this package; never looked up elsewhere.
-LIBRARY_PATH = Path(__file__).parent / "lib" / _LIBRARY_NAMES.get(sys.platform, "")
+# The bundled PostProject platform wheel carries its own native library, which
+# the binding loads when given no path. The extension never names one, so a
+# newer wheel another extension bundles still brings a matching library.
 
 
 class PostProjectPreferences(bpy.types.AddonPreferences):
@@ -37,7 +33,7 @@ class POSTPROJECT_OT_find_missing_media(bpy.types.Operator):
 
     bl_idname = "postproject.find_missing_media"
     bl_label = "Find Missing Media by Content"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options: ClassVar[set[str]] = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, _context):
@@ -67,9 +63,8 @@ class POSTPROJECT_OT_find_missing_media(bpy.types.Operator):
                 path,
                 missing,
                 [blend.parent, *_project_directories()],
-                library_path=LIBRARY_PATH,
             )
-        except Exception as error:  # noqa: BLE001 - reported to the user
+        except Exception as error:
             self.report({"WARNING"}, f"{path.name} could not be read: {error}")
             return {"CANCELLED"}
         paths = {}
@@ -107,9 +102,12 @@ def _project_directories() -> list[Path]:
         return []
     directories = [Path(bpy.path.abspath(project.root_path))]
     for variable in project.variables:
-        if variable.type == "STRING" and getattr(variable, "subtype", "") == "FILEPATH":
-            if variable.value:
-                directories.append(Path(bpy.path.abspath(variable.value)))
+        if (
+            variable.type == "STRING"
+            and getattr(variable, "subtype", "") == "FILEPATH"
+            and variable.value
+        ):
+            directories.append(Path(bpy.path.abspath(variable.value)))
     return directories
 
 
@@ -128,11 +126,10 @@ def _record_on_save(filepath="", *_args):
         report = production.record(
             production.production_path(blend, _project_root()),
             media,
-            library_path=LIBRARY_PATH,
             new_uuid=strips.new_uuid,
             blender_version=bpy.app.version_string,
         )
-    except Exception as error:  # noqa: BLE001 - saving must never fail
+    except Exception as error:
         print(f"PostProject: sequencer media not recorded: {error}")
         return
     for index, value in report.new_uuids.items():

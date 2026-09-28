@@ -83,7 +83,6 @@ def record(
     production: Path,
     strips: list[StripMedia],
     *,
-    library_path: Path,
     new_uuid,
     blender_version: str,
 ) -> RecordReport:
@@ -97,11 +96,9 @@ def record(
     if not any(strip.paths and strip.exists() for strip in strips):
         return report
     if production.exists():
-        prod = pp.Production.open(production, library_path=library_path)
+        prod = pp.Production.open(production)
     else:
-        prod = pp.Production.create(
-            production, production.stem, library_path=library_path
-        )
+        prod = pp.Production.create(production, production.stem)
     try:
         # Strips sharing a UUID are duplicates or cut pieces of one strip.
         groups: dict[str, dict[tuple[Path, ...], list[int]]] = defaultdict(dict)
@@ -122,7 +119,7 @@ def record(
                     strip = strips[indices[0]]
                     report.recorded += len(indices)
                     if not claimed and (
-                        asset is None or _matches(prod, tx, asset, strip, library_path)
+                        asset is None or _matches(prod, tx, asset, strip)
                     ):
                         claimed = True
                         if asset is None:
@@ -141,8 +138,6 @@ def find(
     production: Path,
     strips: list[StripMedia],
     search_directories: list[Path],
-    *,
-    library_path: Path,
 ) -> list[Relink]:
     """Resolve the recorded media of missing strips in one call.
 
@@ -150,7 +145,7 @@ def find(
     exactly one candidate that PostProject matched by content.
     """
 
-    prod = pp.Production.open(production, library_path=library_path)
+    prod = pp.Production.open(production)
     try:
         results: list[Relink] = []
         wanted: dict[pp.AssetId, list[StripMedia]] = defaultdict(list)
@@ -163,7 +158,7 @@ def find(
             wanted[asset].append(strip)
             for resource in _original(prod, asset).resources:
                 for locator in resource.locators:
-                    directories.update(_former_directories(locator.uri, library_path))
+                    directories.update(_former_directories(locator.uri))
         if not wanted:
             return results
         resolutions = prod.resolve(
@@ -175,7 +170,7 @@ def find(
             if resolution.representation_id != originals[resolution.asset_id]:
                 continue
             for strip in wanted[resolution.asset_id]:
-                results.append(_relink(strip, resolution, library_path))
+                results.append(_relink(strip, resolution))
         return results
     finally:
         prod.close()
@@ -190,15 +185,11 @@ def _asset_for(prod: pp.Production, uuid: str) -> pp.AssetId | None:
 
 
 def _original(prod: pp.Production, asset: pp.AssetId) -> pp.Representation:
-    originals = [
+    return next(
         representation
         for representation in prod.representations[asset]
         if representation.kind is pp.RepresentationKind.ORIGINAL
-    ]
-    # A sequence is recorded after the single frame import requires; see
-    # _import. The sequence is the representation the strip uses.
-    originals.sort(key=lambda r: r.image_sequence is None)
-    return originals[0]
+    )
 
 
 def _matches(
@@ -206,7 +197,6 @@ def _matches(
     tx: pp.Transaction,
     asset: pp.AssetId,
     strip: StripMedia,
-    library_path: Path,
 ) -> bool:
     """Confirm that the strip still uses the asset's media, recording its location.
 
@@ -219,7 +209,7 @@ def _matches(
     if strip.sequence is not None:
         if original.image_sequence is None:
             return False
-        uri = pp.file_locator(strip.sequence.directory, library_path=library_path)
+        uri = pp.file_locator(strip.sequence.directory)
         descriptor = original.image_sequence
         if (descriptor.prefix, descriptor.suffix, descriptor.start, descriptor.end) != (
             strip.sequence.prefix,
@@ -231,12 +221,12 @@ def _matches(
         known = {locator.uri for locator in resource.locators}
         if uri not in known:
             tx.confirm_locator(resource.id, uri)
-        _retire_vanished(tx, resource, uri, library_path)
+        _retire_vanished(tx, resource, uri)
         return True
     if len(strip.paths) != 1 or original.image_sequence is not None:
         return False
     path = strip.paths[0]
-    uri = pp.file_locator(path, library_path=library_path)
+    uri = pp.file_locator(path)
     known = {locator.uri for locator in resource.locators}
     if uri in known:
         stat = path.stat()
@@ -251,55 +241,46 @@ def _matches(
         tx.confirm_locator(resource.id, uri)
     else:
         return False
-    _retire_vanished(tx, resource, uri, library_path)
+    _retire_vanished(tx, resource, uri)
     return True
 
 
-def _retire_vanished(
-    tx: pp.Transaction, resource: pp.Resource, current: str, library_path: Path
-) -> None:
+def _retire_vanished(tx: pp.Transaction, resource: pp.Resource, current: str) -> None:
     for locator in resource.locators:
         if locator.uri == current:
             continue
-        path = pp.locator_file_path(locator.uri, library_path=library_path)
+        path = pp.locator_file_path(locator.uri)
         if not path.exists():
             tx.retire_locator(locator.id)
 
 
 def _import(tx: pp.Transaction, strip: StripMedia, uuid: str) -> pp.AssetId:
-    if strip.sequence is None:
-        asset = tx.import_media(strip.paths[0], strip.name)
-    else:
-        # Import accepts only a single file, so the first frame becomes the
-        # asset's original and the sequence a second original representation.
-        asset = tx.import_media(strip.paths[0], strip.name)
+    source: pp.MediaSource = pp.FileSource(strip.paths[0])
+    if strip.sequence is not None:
         sequence = strip.sequence
-        tx.add_image_sequence_representation(
-            asset,
-            pp.RepresentationKind.ORIGINAL,
-            pp.ImageSequenceInput(
-                directory=str(sequence.directory),
-                prefix=sequence.prefix,
-                suffix=sequence.suffix,
-                padding=sequence.padding,
-                start=sequence.start,
-                end=sequence.end,
-                step=sequence.step,
-                rate_numerator=strip.rate[0],
-                rate_denominator=strip.rate[1],
-            ),
+        source = pp.ImageSequenceSource(
+            directory=sequence.directory,
+            prefix=sequence.prefix,
+            suffix=sequence.suffix,
+            padding=sequence.padding,
+            start=sequence.start,
+            end=sequence.end,
+            step=sequence.step,
+            rate_numerator=strip.rate[0],
+            rate_denominator=strip.rate[1],
         )
+    asset = tx.import_media(source, strip.name)
     tx.add_external_identifier(
         asset, pp.ExternalIdentifier(APPLICATION_SCHEME, uuid, STRIP_QUALIFIER)
     )
     return asset
 
 
-def _former_directories(uri: str, library_path: Path) -> list[Path]:
+def _former_directories(uri: str) -> list[Path]:
     """Return the folders a locator's file was in, to search them again."""
 
     try:
-        path = pp.locator_file_path(uri, library_path=library_path)
+        path = pp.locator_file_path(uri)
     except pp.PostProjectError:
         return []
     return [path.parent, path] if path.suffix == "" else [path.parent]
@@ -313,9 +294,7 @@ _CONTENT_EVIDENCE = {
 _SEQUENCE_EVIDENCE = _CONTENT_EVIDENCE | {pp.EvidenceKind.PARTIAL_FINGERPRINT_MATCH}
 
 
-def _relink(
-    strip: StripMedia, resolution: pp.RepresentationResolution, library_path: Path
-) -> Relink:
+def _relink(strip: StripMedia, resolution: pp.RepresentationResolution) -> Relink:
     resource = resolution.resources[0]
     state = resource.state
     if state is pp.ResourceResolutionState.ONLINE_AT_KNOWN_LOCATOR:
@@ -337,7 +316,7 @@ def _relink(
         return Relink(strip.uuid, strip.name, "missing")
     else:
         return _unresolved(strip, "error", resource)
-    found = pp.locator_file_path(candidate.uri, library_path=library_path)
+    found = pp.locator_file_path(candidate.uri)
     if strip.sequence is None:
         paths = {strip.paths[0]: found}
     else:
