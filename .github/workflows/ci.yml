@@ -1,0 +1,54 @@
+name: Blender pilot against PostProject main
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      postproject_ref:
+        description: PostProject revision to build against
+        required: false
+        type: string
+        default: main
+  workflow_call:
+    inputs:
+      postproject_ref:
+        required: false
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  blender:
+    name: Blender ${{ matrix.blender }}
+    runs-on: ubuntu-latest
+    # The alpha is Blender's moving main branch; it reports, but never blocks.
+    continue-on-error: ${{ matrix.blender == '5.3-alpha' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        blender: ["5.2.2", "5.3-alpha"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: postproject-org/postproject-blender
+      - uses: actions/checkout@v7
+        with:
+          repository: postproject-org/postproject
+          ref: ${{ inputs.postproject_ref || 'main' }}
+          path: postproject
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - name: Install Blender's runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-6 libxi6 libxxf86vm1 libxfixes3 libxrender1 libxkbcommon0 \
+            libgl1 libegl1 libsm6 libice6
+      - name: Download Blender
+        run: tools/fetch_blender.py "${{ matrix.blender }}" blender
+      - name: Build the extension and run its tests
+        run: tools/dev.sh blender/blender postproject
