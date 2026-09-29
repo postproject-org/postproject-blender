@@ -84,6 +84,30 @@ also sets the strip's directory (`blenkernel/intern/scene.cc:1005`–`1043` on
 `main`). The metadata object says only whether a path is expanded, a cache, or
 read-only.
 
+**Render and proxy lifecycle.** Blender 5.2 exposes Python handler lists for
+`render_init`, `render_pre`, `render_stats`, `render_write`, `render_post`,
+`render_complete`, and `render_cancel`
+(`source/blender/python/intern/bpy_app_handlers.cc:103`–`110`). An extension
+can therefore observe the start of a render, use statistics updates or written
+frames as a heartbeat, record a completed render, and distinguish explicit
+cancellation. Statistics are renderer-defined text, however, not stable
+fractional progress, and there is no `render_failed` handler. A render started
+elsewhere in Blender can fail without giving an extension a terminal failure
+callback. Sequence proxies have none of these handlers: the window-manager job
+publishes internal progress and cancellation through `wmJob`, but no supported
+Python event identifies its start, completion, or failure
+(`source/blender/sequencer/intern/proxy_job.cc:89`–`146`).
+
+These are observation hooks, not a clean worker lifecycle. The pilot must not
+claim or renew a PostProject job for a normal Blender render or proxy build.
+After `render_complete`, it can record output files that exist as derived media
+and include the scene, frame range, render engine, and output settings it can
+observe. Such an activity is historical provenance, not a reproducible recipe:
+the extension did not own the worker, Blender files may depend on external
+state, and add-ons or renderer configuration may not be serializable. A
+cancelled or failed render records no output. Proxies remain outside the
+experiment because even their terminal state cannot be observed reliably.
+
 ## In Blender 5.3 alpha
 
 Blender 5.3 changes nothing about how strips reference files, find missing
@@ -202,6 +226,15 @@ would have to start the rebuild itself, watch for the job's end with a timer,
 and then record the proxy files. The Media Bin design names the bin as the
 place to manage proxies, so that experiment waits for Blender's own proxy
 model.
+
+Completed renders are a smaller second experiment. A persistent
+`render_complete` handler examines Blender's configured output for the rendered
+frame or animation. When the output exists, it records it as a derived
+representation and records the observed render facts. It does not request or
+claim a job, does not promise a complete recipe, and does not record a result
+on `render_cancel`. The absence of a failure callback means a render that ends
+in error is indistinguishable from one that stopped before producing a usable
+output; in both cases the extension records nothing.
 
 ## Files and modules that change
 
