@@ -60,4 +60,12 @@ jobs:
       - name: Download Blender
         run: tools/fetch_blender.py "${{ matrix.blender }}" blender
       - name: Build the extension and run its tests
-        run: tools/dev.sh blender/blender postproject
+        run: |
+          mkdir -p evidence
+          POSTPROJECT_ABI_TRACE="$PWD/evidence/blender-abi.txt" \
+            tools/dev.sh blender/blender postproject
+      - uses: actions/upload-artifact@v6
+        with:
+          name: blender-${{ matrix.blender }}-postproject-usage
+          path: evidence/
+          if-no-files-found: error
