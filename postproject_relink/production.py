@@ -297,6 +297,54 @@ def record_render(
         return render_id
 
 
+def confirm_location(
+    production: Path,
+    strip_uuid: str,
+    path: Path,
+    *,
+    base_sequence: int,
+    blender_version: str,
+) -> int:
+    """Confirm a verified relink using the revision behind Blender's decision.
+
+    A competing locator-set change raises PostProject's structured
+    ``ConflictError``; this adapter never retries it automatically.
+    """
+
+    with pp.Production.open(production) as prod:
+        asset = _asset_for(prod, strip_uuid)
+        if asset is None:
+            raise ValueError("strip media is not recorded")
+        resource = _original(prod, asset).resources[0]
+        if (
+            prod.verify_resource(resource.id, path)
+            is not pp.ContentVerification.MATCHES
+        ):
+            raise ValueError("candidate content does not match the recorded media")
+        base = next(
+            (
+                revision
+                for revision in prod.changes_since(0, limit=100)
+                if revision.sequence == base_sequence
+            ),
+            None,
+        )
+        if base is None:
+            raise ValueError("base revision is not available")
+        with prod.transaction(base_revision=base.id) as transaction:
+            transaction.set_revision_context(
+                pp.RevisionContext(
+                    pp.OriginIdentity("Blender", blender_version),
+                    "Confirm source location",
+                )
+            )
+            transaction.confirm_locator(resource.id, pp.file_locator(path))
+        latest = prod.latest_revision
+        if latest is None or latest.sequence <= base_sequence:
+            raise RuntimeError("confirmed location did not create a revision")
+        return latest.sequence
+
+
 def _asset_for(prod: pp.Production, uuid: str) -> pp.AssetId | None:
     key = (APPLICATION_SCHEME, uuid, STRIP_QUALIFIER)
     for target in prod.objects_by_external_identifier[key]:
