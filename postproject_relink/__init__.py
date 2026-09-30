@@ -134,6 +134,11 @@ def _record_on_save(filepath="", *_args):
         return
     for index, value in report.new_uuids.items():
         owners[index][strips.UUID_PROPERTY] = value
+    if report.ambiguous:
+        print(
+            "PostProject: sequencer media matched several assets and was not "
+            f"adopted ({len(report.ambiguous)} strips)"
+        )
 
 
 @persistent

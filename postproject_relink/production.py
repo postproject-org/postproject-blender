@@ -60,6 +60,10 @@ class StripMedia:
 @dataclass
 class RecordReport:
     recorded: int = 0
+    adopted: int = 0
+    #: Strip indexes that matched several logical assets. They are left
+    #: unrecorded so Blender never chooses an asset implicitly.
+    ambiguous: tuple[int, ...] = ()
     #: Index into the recorded strips of each strip whose files are no longer
     #: the media its UUID names, with the new UUID it was recorded under.
     new_uuids: dict[int, str] = field(default_factory=dict)
@@ -125,6 +129,20 @@ def record(
                 for indices in by_paths.values():
                     strip = strips[indices[0]]
                     report.recorded += len(indices)
+                    if asset is None and not claimed:
+                        candidates = _known_assets(prod, strip)
+                        if len(candidates) > 1:
+                            report.ambiguous += tuple(indices)
+                            continue
+                        if candidates:
+                            asset = candidates[0]
+                            tx.add_external_identifier(
+                                asset,
+                                pp.ExternalIdentifier(
+                                    APPLICATION_SCHEME, uuid, STRIP_QUALIFIER
+                                ),
+                            )
+                            report.adopted += len(indices)
                     if not claimed and (
                         asset is None or _matches(prod, tx, asset, strip)
                     ):
@@ -139,6 +157,19 @@ def record(
     finally:
         prod.close()
     return report
+
+
+def _known_assets(prod: pp.Production, strip: StripMedia) -> tuple[pp.AssetId, ...]:
+    """Return exact current-locator candidates for explicit host adoption."""
+
+    if strip.sequence is None:
+        locator = pp.LocatorIdentity(pp.file_locator(strip.paths[0]))
+    else:
+        locator = pp.LocatorIdentity(
+            pp.file_locator(strip.sequence.directory), strip.sequence.naming
+        )
+    matches = prod.find_known_media_by_locator(locator, limit=100).items
+    return tuple(dict.fromkeys(match.asset_id for match in matches))
 
 
 def find(

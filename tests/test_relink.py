@@ -133,6 +133,41 @@ class RelinkTest(unittest.TestCase):
         self.assertTrue((self.root / "film.pproj").is_file())
         self.assertIsInstance(strip.get("postproject_uuid"), str)
 
+    def test_saving_adopts_media_recorded_by_another_host(self):
+        movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
+        production_path = self.root / "film.pproj"
+        import postproject as pp
+
+        with (
+            pp.Production.create(production_path, "Shared production") as production,
+            production.transaction() as transaction,
+        ):
+            transaction.set_revision_context(
+                pp.RevisionContext(pp.OriginIdentity("Kdenlive", "26.08.1"))
+            )
+            asset = transaction.import_media(movie, "A001")
+            transaction.add_external_identifier(
+                asset,
+                pp.ExternalIdentifier(
+                    "https://postproject.org/id/application",
+                    "kdenlive-clip",
+                    "org.kde.kdenlive:control_uuid",
+                ),
+            )
+
+        strip = self.editor.strips.new_movie("A001", str(movie), 1, 1)
+        self.save()
+
+        with pp.Production.open(production_path) as production:
+            assets = tuple(production.assets)
+            self.assertEqual(len(assets), 1)
+            identifiers = production.external_identifiers[assets[0].id]
+        self.assertEqual(
+            {identifier.qualifier for identifier in identifiers},
+            {"org.kde.kdenlive:control_uuid", "org.blender:strip_uuid"},
+        )
+        self.assertIsInstance(strip["postproject_uuid"], str)
+
     def test_renamed_movie_is_relinked_by_content(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
         make_movie(self.root / "rushes" / "B001.mkv", (0, 1, 0))
