@@ -82,9 +82,15 @@ class Relink:
     detail: str | None = None
 
 
-def production_path(blend_path: Path, project_root: Path | None) -> Path:
-    """Return the production for a .blend file: its project's, or a sidecar."""
+def production_path(
+    blend_path: Path,
+    project_root: Path | None,
+    selected: Path | None = None,
+) -> Path:
+    """Return an explicit production, otherwise the project or sidecar default."""
 
+    if selected is not None:
+        return selected
     if project_root is not None:
         return project_root / PROJECT_PRODUCTION_NAME
     return blend_path.with_suffix(".pproj")

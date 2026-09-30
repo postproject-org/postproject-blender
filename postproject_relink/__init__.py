@@ -8,6 +8,7 @@ from typing import ClassVar
 
 import bpy
 from bpy.app.handlers import persistent
+from bpy_extras.io_utils import ImportHelper
 
 # The bundled PostProject platform wheel carries its own native library, which
 # the binding loads when given no path. The extension never names one, so a
@@ -23,9 +24,38 @@ class PostProjectPreferences(bpy.types.AddonPreferences):
         "missing sequencer media is opened",
         default=False,
     )
+    production_path: bpy.props.StringProperty(
+        name="Shared Production",
+        description="Explicit local .pproj file shared with other applications",
+        subtype="FILE_PATH",
+        default="",
+    )
 
     def draw(self, _context):
         self.layout.prop(self, "find_on_load")
+        row = self.layout.row(align=True)
+        row.prop(self, "production_path")
+        row.operator(
+            POSTPROJECT_OT_select_production.bl_idname, text="", icon="FILE_FOLDER"
+        )
+        if self.production_path:
+            self.layout.label(text=str(_selected_production()))
+
+
+class POSTPROJECT_OT_select_production(bpy.types.Operator, ImportHelper):
+    """Select the local PostProject production shared by this Blender file"""
+
+    bl_idname = "postproject.select_production"
+    bl_label = "Select PostProject Production"
+    filename_ext = ".pproj"
+    filter_glob: bpy.props.StringProperty(default="*.pproj", options={"HIDDEN"})
+
+    def execute(self, _context):
+        preferences = _preferences()
+        if preferences is None:
+            return {"CANCELLED"}
+        preferences.production_path = self.filepath
+        return {"FINISHED"}
 
 
 class POSTPROJECT_OT_find_missing_media(bpy.types.Operator):
@@ -43,7 +73,9 @@ class POSTPROJECT_OT_find_missing_media(bpy.types.Operator):
         from . import production, strips
 
         blend = Path(bpy.data.filepath)
-        path = production.production_path(blend, _project_root())
+        path = production.production_path(
+            blend, _project_root(), _selected_production()
+        )
         missing = []
         for scene, strip in strips.media_strips():
             value = strip.get(strips.UUID_PROPERTY)
@@ -89,6 +121,18 @@ def _project():
     return getattr(bpy.data, "project", None)
 
 
+def _preferences():
+    extension = bpy.context.preferences.addons.get(__package__)
+    return extension.preferences if extension is not None else None
+
+
+def _selected_production() -> Path | None:
+    preferences = _preferences()
+    if preferences is None or not preferences.production_path:
+        return None
+    return Path(bpy.path.abspath(preferences.production_path)).expanduser().resolve()
+
+
 def _project_root() -> Path | None:
     project = _project()
     return Path(bpy.path.abspath(project.root_path)) if project else None
@@ -124,7 +168,7 @@ def _record_on_save(filepath="", *_args):
             owners.append(strip)
     try:
         report = production.record(
-            production.production_path(blend, _project_root()),
+            production.production_path(blend, _project_root(), _selected_production()),
             media,
             new_uuid=strips.new_uuid,
             blender_version=bpy.app.version_string,
@@ -143,8 +187,8 @@ def _record_on_save(filepath="", *_args):
 
 @persistent
 def _find_on_load(*_args):
-    preferences = bpy.context.preferences.addons.get(__package__)
-    if preferences is None or not preferences.preferences.find_on_load:
+    preferences = _preferences()
+    if preferences is None or not preferences.find_on_load:
         return
     if bpy.ops.postproject.find_missing_media.poll():
         bpy.ops.postproject.find_missing_media()
@@ -154,7 +198,11 @@ def _menu(self, _context):
     self.layout.operator(POSTPROJECT_OT_find_missing_media.bl_idname)
 
 
-_CLASSES = (PostProjectPreferences, POSTPROJECT_OT_find_missing_media)
+_CLASSES = (
+    PostProjectPreferences,
+    POSTPROJECT_OT_select_production,
+    POSTPROJECT_OT_find_missing_media,
+)
 
 
 def register():

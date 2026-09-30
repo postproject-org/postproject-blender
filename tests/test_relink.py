@@ -133,6 +133,20 @@ class RelinkTest(unittest.TestCase):
         self.assertTrue((self.root / "film.pproj").is_file())
         self.assertIsInstance(strip.get("postproject_uuid"), str)
 
+    def test_explicit_shared_production_overrides_the_sidecar(self):
+        movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
+        self.editor.strips.new_movie("A001", str(movie), 1, 1)
+        shared = self.root / "shared" / "documentary.pproj"
+        shared.parent.mkdir()
+        preferences = bpy.context.preferences.addons[MODULE].preferences
+        preferences.production_path = str(shared)
+        try:
+            self.save()
+        finally:
+            preferences.production_path = ""
+        self.assertTrue(shared.is_file())
+        self.assertFalse((self.root / "film.pproj").exists())
+
     def test_saving_adopts_media_recorded_by_another_host(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
         production_path = self.root / "film.pproj"
