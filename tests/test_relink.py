@@ -182,6 +182,39 @@ class RelinkTest(unittest.TestCase):
         )
         self.assertIsInstance(strip["postproject_uuid"], str)
 
+    def test_completed_render_records_observed_provenance(self):
+        movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
+        self.editor.strips.new_movie("A001", str(movie), 1, 1)
+        self.save()
+        output = self.root / "renders" / "plate.png"
+        output.parent.mkdir()
+        self.scene.render.filepath = str(output)
+        self.scene.render.image_settings.file_format = "PNG"
+        self.scene.render.resolution_x, self.scene.render.resolution_y = 64, 36
+        self.scene.render.resolution_percentage = 100
+        bpy.ops.render.render(write_still=True, scene=self.scene.name)
+
+        import postproject as pp
+
+        with pp.Production.open(self.root / "film.pproj") as production:
+            (asset,) = tuple(production.assets)
+            representations = production.representations[asset.id]
+            render = next(
+                item
+                for item in representations
+                if item.kind is pp.RepresentationKind.DERIVED
+            )
+            (activity,) = production.activities_producing[render.id]
+            self.assertEqual(activity.kind, "org.blender:render")
+            self.assertEqual(len(activity.inputs), 1)
+            self.assertEqual(
+                production.evaluate_artifact(render.id).state,
+                pp.ArtifactKnowledgeState.CURRENT,
+            )
+            self.assertFalse(
+                production.artifact_reproducibility(render.id).reproducible
+            )
+
     def test_renamed_movie_is_relinked_by_content(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
         make_movie(self.root / "rushes" / "B001.mkv", (0, 1, 0))

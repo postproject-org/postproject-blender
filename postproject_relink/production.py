@@ -82,6 +82,17 @@ class Relink:
     detail: str | None = None
 
 
+@dataclass(frozen=True)
+class RenderFacts:
+    """Observable Blender render settings retained as historical context."""
+
+    scene: str
+    engine: str
+    frame_start: int
+    frame_end: int
+    output_format: str
+
+
 def production_path(
     blend_path: Path,
     project_root: Path | None,
@@ -218,6 +229,72 @@ def find(
         return results
     finally:
         prod.close()
+
+
+def record_render(
+    production: Path,
+    source_uuids: tuple[str, ...],
+    output: Path,
+    *,
+    blender_version: str,
+    facts: RenderFacts,
+) -> pp.RepresentationId | None:
+    """Record one completed render when its sources name one logical asset.
+
+    Blender exposes completion, but not a complete worker lifecycle. This is
+    observed provenance rather than a claimed PostProject job or recipe.
+    """
+
+    if not production.is_file() or not output.is_file():
+        return None
+    with pp.Production.open(production) as prod:
+        assets = tuple(
+            dict.fromkeys(
+                asset
+                for uuid in source_uuids
+                if (asset := _asset_for(prod, uuid)) is not None
+            )
+        )
+        if len(assets) != 1:
+            return None
+        source_ids = tuple(
+            representation.id
+            for representation in prod.representations[assets[0]]
+            if representation.kind is pp.RepresentationKind.ORIGINAL
+        )
+        if not source_ids:
+            return None
+        with prod.transaction() as transaction:
+            transaction.set_revision_context(
+                pp.RevisionContext(
+                    pp.OriginIdentity("Blender", blender_version),
+                    "Record completed render",
+                )
+            )
+            render_id = transaction.add_representation(
+                assets[0], pp.RepresentationKind.DERIVED, output
+            )
+            activity_id = transaction.create_activity(
+                pp.ActivitySpec(
+                    "org.blender:render",
+                    inputs=tuple(pp.ActivityEdge(item) for item in source_ids),
+                    outputs=(pp.ActivityEdge(render_id),),
+                )
+            )
+            vocabulary = "https://postproject.org/ns/blender/1"
+            values = {
+                "scene": facts.scene,
+                "engine": facts.engine,
+                "frame-range": f"{facts.frame_start}-{facts.frame_end}",
+                "output-format": facts.output_format,
+            }
+            for name, value in values.items():
+                transaction.add_metadata(
+                    activity_id,
+                    pp.MetadataProperty(vocabulary, name),
+                    pp.MetadataString(value),
+                )
+        return render_id
 
 
 def _asset_for(prod: pp.Production, uuid: str) -> pp.AssetId | None:

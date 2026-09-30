@@ -186,6 +186,45 @@ def _record_on_save(filepath="", *_args):
 
 
 @persistent
+def _record_completed_render(scene, *_args):
+    from . import production, strips
+
+    if not bpy.data.filepath:
+        return
+    source_uuids = tuple(
+        dict.fromkeys(
+            value
+            for candidate_scene, strip in strips.media_strips()
+            if candidate_scene == scene
+            and isinstance((value := strip.get(strips.UUID_PROPERTY)), str)
+        )
+    )
+    configured_output = Path(bpy.path.abspath(scene.render.filepath))
+    output = (
+        configured_output
+        if configured_output.is_file()
+        else Path(scene.render.frame_path(frame=scene.frame_current))
+    )
+    blend = Path(bpy.data.filepath)
+    try:
+        production.record_render(
+            production.production_path(blend, _project_root(), _selected_production()),
+            source_uuids,
+            output,
+            blender_version=bpy.app.version_string,
+            facts=production.RenderFacts(
+                scene.name,
+                scene.render.engine,
+                scene.frame_start,
+                scene.frame_end,
+                scene.render.image_settings.file_format,
+            ),
+        )
+    except Exception as error:
+        print(f"PostProject: completed render not recorded: {error}")
+
+
+@persistent
 def _find_on_load(*_args):
     preferences = _preferences()
     if preferences is None or not preferences.find_on_load:
@@ -210,11 +249,13 @@ def register():
         bpy.utils.register_class(cls)
     bpy.types.TOPBAR_MT_file_external_data.append(_menu)
     bpy.app.handlers.save_pre.append(_record_on_save)
+    bpy.app.handlers.render_complete.append(_record_completed_render)
     bpy.app.handlers.load_post.append(_find_on_load)
 
 
 def unregister():
     bpy.app.handlers.load_post.remove(_find_on_load)
+    bpy.app.handlers.render_complete.remove(_record_completed_render)
     bpy.app.handlers.save_pre.remove(_record_on_save)
     bpy.types.TOPBAR_MT_file_external_data.remove(_menu)
     for cls in reversed(_CLASSES):
