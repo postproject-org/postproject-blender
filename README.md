@@ -21,6 +21,11 @@ reviewed by Blender's developers.
   uses `postproject.pproj` at the project root, shared by every `.blend` file
   of the project; otherwise it uses a sidecar `film.pproj` next to
   `film.blend`.
+- *Production file* in the extension preferences selects an explicit `.pproj`
+  instead of that default. The folder button uses Blender's file browser. A
+  strip whose current locator identifies exactly one asset already recorded by
+  another host adopts that asset and adds only Blender's qualified identifier;
+  ambiguous matches are reported and never chosen automatically.
 - Each media strip gets a UUID in the custom property `postproject_uuid`,
   which names the media the strip uses. It is the only change to the `.blend`
   file. Cut and duplicated strips share it; a strip whose files are changed
@@ -34,6 +39,10 @@ reviewed by Blender's developers.
   else is reported and left to *Find Missing Files*.
 - Nothing runs when a file opens unless *Find Missing Media When Opening* is
   enabled in the extension's preferences.
+- After a completed still render, the extension records the existing output as
+  a derived representation with its source dependency and observed Blender
+  settings. It does not invent a PostProject job: Blender exposes no reliable
+  failure callback for an extension-owned worker lifecycle.
 
 Disable or uninstall the extension and Blender behaves as before. The
 `postproject_uuid` properties are inert and can be deleted; deleting a
@@ -63,7 +72,14 @@ The tests install the built package into a temporary user directory and cover
 a renamed movie, a relative path, moved and incomplete image sequences, two
 identical copies, a different file with the same name, a sound strip, cut and
 duplicated strips, a missing or unreadable production, relinking on open, a
-Blender 5.3 project, and the disabled extension.
+Blender 5.3 project, explicit production selection, cross-host adoption,
+completed-render provenance, and the disabled extension.
+
+The Kdenlive pilot's `tools/shared-production.sh` runs the built extension in
+background Blender against the same production as Kdenlive and the
+OpenAssetIO Manager. Its Blender driver is
+`tests/shared_production.py`; it uses the installed extension and public
+PostProject binding rather than editing the production database.
 
 CI runs them nightly against PostProject `main` on Blender 5.2.2, and on the
 newest 5.3 alpha without blocking. PostProject's `blender-pilot` workflow
