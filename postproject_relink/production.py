@@ -154,7 +154,7 @@ def record(
                         if candidates:
                             asset = candidates[0]
                             tx.add_external_identifier(
-                                asset,
+                                pp.AssetRef(asset),
                                 pp.ExternalIdentifier(
                                     APPLICATION_SCHEME, uuid, STRIP_QUALIFIER
                                 ),
@@ -290,7 +290,7 @@ def record_render(
             }
             for name, value in values.items():
                 transaction.add_metadata(
-                    activity_id,
+                    pp.ActivityRef(activity_id),
                     pp.MetadataProperty(vocabulary, name),
                     pp.MetadataString(value),
                 )
@@ -348,8 +348,8 @@ def confirm_location(
 def _asset_for(prod: pp.Production, uuid: str) -> pp.AssetId | None:
     key = (APPLICATION_SCHEME, uuid, STRIP_QUALIFIER)
     for target in prod.objects_by_external_identifier[key]:
-        if isinstance(target, pp.AssetId):
-            return target
+        if isinstance(target, pp.AssetRef):
+            return target.id
     return None
 
 
@@ -454,7 +454,7 @@ def _import(tx: pp.Transaction, strip: StripMedia, uuid: str) -> pp.AssetId:
         )
     asset = tx.import_media(source, strip.name)
     tx.add_external_identifier(
-        asset, pp.ExternalIdentifier(APPLICATION_SCHEME, uuid, STRIP_QUALIFIER)
+        pp.AssetRef(asset), pp.ExternalIdentifier(APPLICATION_SCHEME, uuid, STRIP_QUALIFIER)
     )
     return asset
 

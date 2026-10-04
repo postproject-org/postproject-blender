@@ -48,7 +48,7 @@ def record_and_render():
         (asset,) = tuple(production.assets)
         qualifiers = {
             identifier.qualifier
-            for identifier in production.external_identifiers[asset.id]
+            for identifier in production.external_identifiers[pp.AssetRef(asset.id)]
         }
         assert qualifiers == {
             "org.kde.kdenlive:control_uuid",

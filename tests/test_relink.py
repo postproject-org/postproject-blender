@@ -161,7 +161,7 @@ class RelinkTest(unittest.TestCase):
             )
             asset = transaction.import_media(movie, "A001")
             transaction.add_external_identifier(
-                asset,
+                pp.AssetRef(asset),
                 pp.ExternalIdentifier(
                     "https://postproject.org/id/application",
                     "kdenlive-clip",
@@ -175,7 +175,7 @@ class RelinkTest(unittest.TestCase):
         with pp.Production.open(production_path) as production:
             assets = tuple(production.assets)
             self.assertEqual(len(assets), 1)
-            identifiers = production.external_identifiers[assets[0].id]
+            identifiers = production.external_identifiers[pp.AssetRef(assets[0].id)]
         self.assertEqual(
             {identifier.qualifier for identifier in identifiers},
             {"org.kde.kdenlive:control_uuid", "org.blender:strip_uuid"},

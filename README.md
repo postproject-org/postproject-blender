@@ -54,6 +54,10 @@ The extension bundles one PostProject platform wheel, which carries the
 Python binding and the native library of the same build. `tools/build.py`
 builds the package for that wheel's platform:
 
+The development SDK returns ordinary UUIDs with nominal ID hints. The
+extension uses explicit asset/activity references for dynamic targets;
+stored strip UUIDs and production identifiers retain their existing format.
+
 ```sh
 tools/build.py --blender /path/to/blender \
   --wheel postproject-0.4.0a1-py3-none-manylinux_2_28_x86_64.whl
