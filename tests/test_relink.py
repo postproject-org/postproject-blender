@@ -299,6 +299,7 @@ class RelinkTest(unittest.TestCase):
                     "org.kde.kdenlive:control_uuid",
                 ),
             )
+            transaction.commit()
 
         strip = self.editor.strips.new_movie("A001", str(movie), 1, 1)
         self.save()
