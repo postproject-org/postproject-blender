@@ -150,6 +150,79 @@ class RelinkTest(unittest.TestCase):
         self.assertEqual(second.receipt.production_id, first.receipt.production_id)
         self.assertIsNone(second.receipt.revision)
 
+    def test_confirm_location_uses_scoped_base_and_own_receipt(self):
+        import postproject as pp
+        from bl_ext.user_default.postproject_relink import production
+
+        path = self.root / "confirm.pproj"
+        media = self.root / "camera.mov"
+        media.write_bytes(b"confirmation fixture")
+        strip = production.StripMedia("camera", "Camera", (media,))
+        production.record(path, [strip], new_uuid=lambda: "new", blender_version="test")
+        with pp.Production.open(path) as prod, prod.read_session() as view:
+            base = view.decision_base
+        moved = self.root / "moved.mov"
+        shutil.copy2(media, moved)
+        receipt = production.confirm_location(
+            path, "camera", moved, base=base, blender_version="test"
+        )
+        self.assertEqual(receipt.production_id, base.production_id)
+        self.assertGreater(receipt.revision.sequence, base.revision.sequence)
+        competitor = self.root / "competitor.mov"
+        shutil.copy2(media, competitor)
+        with self.assertRaises(pp.ConflictError):
+            production.confirm_location(
+                path, "camera", competitor, base=base, blender_version="test"
+            )
+        with pp.Production.open(path) as prod, prod.read_session() as view:
+            current = view.decision_base
+        unchanged = production.confirm_location(
+            path, "camera", moved, base=current, blender_version="test"
+        )
+        self.assertIsNone(unchanged.revision)
+        with (
+            pp.Production.create(self.root / "wrong.pproj") as other,
+            other.read_session() as view,
+        ):
+            wrong = view.decision_base
+        with self.assertRaises(pp.InvalidArgumentError):
+            production.confirm_location(
+                path, "camera", competitor, base=wrong, blender_version="test"
+            )
+        with pp.Production.open(path) as prod:
+            self.assertEqual(prod.latest_revision.id, receipt.revision.id)
+
+    def test_render_record_returns_its_representation_and_commit(self):
+        import postproject as pp
+        from bl_ext.user_default.postproject_relink import production
+
+        path = self.root / "render-receipt.pproj"
+        media = self.root / "source.mov"
+        media.write_bytes(b"source fixture")
+        production.record(
+            path,
+            [production.StripMedia("camera", "Camera", (media,))],
+            new_uuid=lambda: "new",
+            blender_version="test",
+        )
+        output = self.root / "output.png"
+        output.write_bytes(b"render fixture")
+        result = production.record_render(
+            path,
+            ("camera",),
+            output,
+            blender_version="test",
+            facts=production.RenderFacts("Scene", "BLENDER_EEVEE", 1, 3, "PNG"),
+        )
+        self.assertIsNotNone(result)
+        self.assertIsNotNone(result.receipt.revision)
+        with pp.Production.open(path) as prod:
+            self.assertEqual(
+                prod.representation(result.representation_id).kind,
+                pp.RepresentationKind.DERIVED,
+            )
+            self.assertEqual(prod.latest_revision.id, result.receipt.revision.id)
+
     def test_strip_binding_to_several_assets_is_rejected(self):
         import postproject as pp
         from bl_ext.user_default.postproject_relink import production
