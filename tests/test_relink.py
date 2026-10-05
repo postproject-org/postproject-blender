@@ -126,6 +126,64 @@ class RelinkTest(unittest.TestCase):
     def find(self):
         return bpy.ops.postproject.find_missing_media()
 
+    def test_adapter_returns_its_commit_and_reports_unchanged_save(self):
+        from bl_ext.user_default.postproject_relink import production
+
+        path = self.root / "receipt.pproj"
+        media = self.root / "receipt.mov"
+        media.write_bytes(b"record receipt fixture")
+        strip = production.StripMedia("camera", "Camera", (media,))
+        first = production.record(
+            path,
+            [strip],
+            new_uuid=lambda: "new",
+            blender_version=bpy.app.version_string,
+        )
+        self.assertIsNotNone(first.receipt.revision)
+        self.assertEqual(first.receipt.revision.sequence, 1)
+        second = production.record(
+            path,
+            [strip],
+            new_uuid=lambda: "new",
+            blender_version=bpy.app.version_string,
+        )
+        self.assertEqual(second.receipt.production_id, first.receipt.production_id)
+        self.assertIsNone(second.receipt.revision)
+
+    def test_strip_binding_to_several_assets_is_rejected(self):
+        import postproject as pp
+        from bl_ext.user_default.postproject_relink import production
+
+        path = self.root / "ambiguous-binding.pproj"
+        media = self.root / "binding.mov"
+        media.write_bytes(b"binding fixture")
+        with (
+            pp.Production.create(path) as prod,
+            prod.read_session() as view,
+            view.edit() as edit,
+        ):
+            for _ in range(2):
+                asset = edit.import_media(media)
+                edit.add_external_identifier(
+                    pp.AssetRef(asset),
+                    pp.ExternalIdentifier(
+                        production.APPLICATION_SCHEME,
+                        "camera",
+                        production.STRIP_QUALIFIER,
+                    ),
+                )
+            receipt = edit.commit()
+        strip = production.StripMedia("camera", "Camera", (media,))
+        with self.assertRaisesRegex(ValueError, "several logical assets"):
+            production.record(
+                path,
+                [strip],
+                new_uuid=lambda: "new",
+                blender_version=bpy.app.version_string,
+            )
+        with pp.Production.open(path) as prod:
+            self.assertEqual(prod.latest_revision.id, receipt.revision.id)
+
     def test_saving_records_media_in_a_sidecar(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))
         strip = self.editor.strips.new_movie("A001", str(movie), 1, 1)
