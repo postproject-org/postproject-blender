@@ -77,17 +77,23 @@ def win_conflict():
     strip = bpy.context.scene.sequence_editor.strips_all["camera"]
     choice = ROOT / "blender-choice.mkv"
     shutil.copy2(ROOT / "moved" / "camera.mkv", choice)
-    base_sequence = int((ROOT / "base-sequence").read_text(encoding="ascii"))
+    import postproject as pp
+
+    base = pp.DecisionBase.from_token(
+        (ROOT / "decision-base").read_text(encoding="ascii")
+    )
     from bl_ext.user_default.postproject_relink import production
 
-    sequence = production.confirm_location(
+    receipt = production.confirm_location(
         ROOT / "shared.pproj",
         strip["postproject_uuid"],
         choice,
-        base_sequence=base_sequence,
+        base=base,
         blender_version=bpy.app.version_string,
     )
-    assert sequence > base_sequence
+    assert receipt.production_id == base.production_id
+    assert receipt.revision is not None and base.revision is not None
+    assert receipt.revision.sequence > base.revision.sequence
 
 
 install()

@@ -94,6 +94,14 @@ class RenderFacts:
     output_format: str
 
 
+@dataclass(frozen=True)
+class RecordedRender:
+    """The representation and atomic receipt created by this render record."""
+
+    representation_id: pp.RepresentationId
+    receipt: pp.CommitReceipt
+
+
 def production_path(
     blend_path: Path,
     project_root: Path | None,
@@ -250,7 +258,7 @@ def record_render(
     *,
     blender_version: str,
     facts: RenderFacts,
-) -> pp.RepresentationId | None:
+) -> RecordedRender | None:
     """Record one completed render when its sources name one logical asset.
 
     Blender exposes completion, but not a complete worker lifecycle. This is
@@ -308,8 +316,8 @@ def record_render(
                     pp.MetadataProperty(vocabulary, name),
                     pp.MetadataString(value),
                 )
-            transaction.commit()
-        return render_id
+            receipt = transaction.commit()
+        return RecordedRender(render_id, receipt)
 
 
 def confirm_location(
@@ -317,9 +325,9 @@ def confirm_location(
     strip_uuid: str,
     path: Path,
     *,
-    base_sequence: int,
+    base: pp.DecisionBase,
     blender_version: str,
-) -> int:
+) -> pp.CommitReceipt:
     """Confirm a verified relink using the revision behind Blender's decision.
 
     A competing locator-set change raises PostProject's structured
@@ -336,28 +344,19 @@ def confirm_location(
             is not pp.ContentVerification.MATCHES
         ):
             raise ValueError("candidate content does not match the recorded media")
-        base = next(
-            (
-                revision
-                for revision in prod.changes_since(0, limit=100)
-                if revision.sequence == base_sequence
-            ),
-            None,
-        )
-        if base is None:
-            raise ValueError("base revision is not available")
-        with prod.transaction(base_revision=base.id) as transaction:
+        uri = pp.file_locator(path)
+        known = any(locator.uri == uri for locator in resource.locators)
+        view.close()
+        with prod.edit(base) as transaction:
             transaction.set_revision_context(
                 pp.RevisionContext(
                     pp.OriginIdentity("Blender", blender_version),
                     "Confirm source location",
                 )
             )
-            transaction.confirm_locator(resource.id, pp.file_locator(path))
-        latest = prod.latest_revision
-        if latest is None or latest.sequence <= base_sequence:
-            raise RuntimeError("confirmed location did not create a revision")
-        return latest.sequence
+            if not known:
+                transaction.confirm_locator(resource.id, uri)
+            return transaction.commit()
 
 
 def _asset_for(view: pp.ReadSession, uuid: str) -> pp.AssetId | None:
