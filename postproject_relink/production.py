@@ -67,6 +67,7 @@ class RecordReport:
     #: Index into the recorded strips of each strip whose files are no longer
     #: the media its UUID names, with the new UUID it was recorded under.
     new_uuids: dict[int, str] = field(default_factory=dict)
+    receipt: pp.CommitReceipt | None = None
 
 
 @dataclass(frozen=True)
@@ -127,13 +128,14 @@ def record(
         prod = pp.Production.open(production)
     else:
         prod = pp.Production.create(production, production.stem)
+    view = prod.read_session()
     try:
         # Strips sharing a UUID are duplicates or cut pieces of one strip.
         groups: dict[str, dict[tuple[Path, ...], list[int]]] = defaultdict(dict)
         for index, strip in enumerate(strips):
             if strip.paths and strip.exists():
                 groups[strip.uuid].setdefault(strip.paths, []).append(index)
-        with prod.transaction() as tx:
+        with view.edit() as tx:
             tx.set_revision_context(
                 pp.RevisionContext(
                     pp.OriginIdentity("Blender", blender_version),
@@ -141,13 +143,13 @@ def record(
                 )
             )
             for uuid, by_paths in groups.items():
-                asset = _asset_for(prod, uuid)
+                asset = _asset_for(view, uuid)
                 claimed = False
                 for indices in by_paths.values():
                     strip = strips[indices[0]]
                     report.recorded += len(indices)
                     if asset is None and not claimed:
-                        candidates = _known_assets(prod, strip)
+                        candidates = _known_assets(view, strip)
                         if len(candidates) > 1:
                             report.ambiguous += tuple(indices)
                             continue
@@ -161,7 +163,7 @@ def record(
                             )
                             report.adopted += len(indices)
                     if not claimed and (
-                        asset is None or _matches(prod, tx, asset, strip)
+                        asset is None or _matches(view, tx, asset, strip)
                     ):
                         claimed = True
                         if asset is None:
@@ -171,12 +173,14 @@ def record(
                     fresh = new_uuid()
                     _import(tx, strip, fresh)
                     report.new_uuids.update(dict.fromkeys(indices, fresh))
+            report.receipt = tx.commit()
     finally:
+        view.close()
         prod.close()
     return report
 
 
-def _known_assets(prod: pp.Production, strip: StripMedia) -> tuple[pp.AssetId, ...]:
+def _known_assets(view: pp.ReadSession, strip: StripMedia) -> tuple[pp.AssetId, ...]:
     """Return exact current-locator candidates for explicit host adoption."""
 
     if strip.sequence is None:
@@ -185,8 +189,14 @@ def _known_assets(prod: pp.Production, strip: StripMedia) -> tuple[pp.AssetId, .
         locator = pp.LocatorIdentity(
             pp.file_locator(strip.sequence.directory), strip.sequence.naming
         )
-    matches = prod.find_known_media_by_locator(locator, limit=100).items
-    return tuple(dict.fromkeys(match.asset_id for match in matches))
+    assets: dict[pp.AssetId, None] = {}
+    cursor = None
+    while True:
+        page = view.find_known_media_by_locator(locator, limit=100, cursor=cursor)
+        assets.update(dict.fromkeys(match.asset_id for match in page.items))
+        if page.next_cursor is None:
+            return tuple(assets)
+        cursor = page.next_cursor
 
 
 def find(
@@ -201,26 +211,27 @@ def find(
     """
 
     prod = pp.Production.open(production)
+    view = prod.read_session()
     try:
         results: list[Relink] = []
         wanted: dict[pp.AssetId, list[StripMedia]] = defaultdict(list)
         directories = set(search_directories)
         for strip in strips:
-            asset = _asset_for(prod, strip.uuid)
+            asset = _asset_for(view, strip.uuid)
             if asset is None:
                 results.append(Relink(strip.uuid, strip.name, "unrecorded"))
                 continue
             wanted[asset].append(strip)
-            for resource in _original(prod, asset).resources:
+            for resource in _original(view, asset).resources:
                 for locator in resource.locators:
                     directories.update(_former_directories(locator.uri))
         if not wanted:
             return results
-        resolutions = prod.resolve(
+        resolutions = view.resolve(
             list(wanted),
             search_directories=sorted(d for d in directories if d.is_dir()),
         )
-        originals = {asset: _original(prod, asset).id for asset in wanted}
+        originals = {asset: _original(view, asset).id for asset in wanted}
         for resolution in resolutions:
             if resolution.representation_id != originals[resolution.asset_id]:
                 continue
@@ -228,6 +239,7 @@ def find(
                 results.append(_relink(strip, resolution))
         return results
     finally:
+        view.close()
         prod.close()
 
 
@@ -247,24 +259,26 @@ def record_render(
 
     if not production.is_file() or not output.is_file():
         return None
-    with pp.Production.open(production) as prod:
+    with pp.Production.open(production) as prod, prod.read_session() as view:
         assets = tuple(
             dict.fromkeys(
                 asset
                 for uuid in source_uuids
-                if (asset := _asset_for(prod, uuid)) is not None
+                if (asset := _asset_for(view, uuid)) is not None
             )
         )
         if len(assets) != 1:
             return None
         source_ids = tuple(
             representation.id
-            for representation in prod.representations[assets[0]]
+            for representation in _representations(view, assets[0])
             if representation.kind is pp.RepresentationKind.ORIGINAL
         )
         if not source_ids:
             return None
-        with prod.transaction() as transaction:
+        base = view.decision_base
+        view.close()
+        with prod.edit(base) as transaction:
             transaction.set_revision_context(
                 pp.RevisionContext(
                     pp.OriginIdentity("Blender", blender_version),
@@ -294,6 +308,7 @@ def record_render(
                     pp.MetadataProperty(vocabulary, name),
                     pp.MetadataString(value),
                 )
+            transaction.commit()
         return render_id
 
 
@@ -311,13 +326,13 @@ def confirm_location(
     ``ConflictError``; this adapter never retries it automatically.
     """
 
-    with pp.Production.open(production) as prod:
-        asset = _asset_for(prod, strip_uuid)
+    with pp.Production.open(production) as prod, prod.read_session() as view:
+        asset = _asset_for(view, strip_uuid)
         if asset is None:
             raise ValueError("strip media is not recorded")
-        resource = _original(prod, asset).resources[0]
+        resource = _original(view, asset).resources[0]
         if (
-            prod.verify_resource(resource.id, path)
+            view.verify_resource(resource.id, path)
             is not pp.ContentVerification.MATCHES
         ):
             raise ValueError("candidate content does not match the recorded media")
@@ -345,24 +360,44 @@ def confirm_location(
         return latest.sequence
 
 
-def _asset_for(prod: pp.Production, uuid: str) -> pp.AssetId | None:
-    key = (APPLICATION_SCHEME, uuid, STRIP_QUALIFIER)
-    for target in prod.objects_by_external_identifier[key]:
-        if isinstance(target, pp.AssetRef):
-            return target.id
-    return None
+def _asset_for(view: pp.ReadSession, uuid: str) -> pp.AssetId | None:
+    assets = tuple(
+        dict.fromkeys(
+            target.id
+            for target in view.find_by_external_identifier(
+                APPLICATION_SCHEME, uuid, STRIP_QUALIFIER
+            )
+            if isinstance(target, pp.AssetRef)
+        )
+    )
+    if len(assets) > 1:
+        raise ValueError("strip UUID names several logical assets")
+    return assets[0] if assets else None
 
 
-def _original(prod: pp.Production, asset: pp.AssetId) -> pp.Representation:
-    return next(
+def _representations(view: pp.ReadSession, asset: pp.AssetId):
+    cursor = None
+    while True:
+        page = view.representations_page(asset, limit=100, cursor=cursor)
+        yield from page.items
+        if page.next_cursor is None:
+            return
+        cursor = page.next_cursor
+
+
+def _original(view: pp.ReadSession, asset: pp.AssetId) -> pp.Representation:
+    originals = tuple(
         representation
-        for representation in prod.representations[asset]
+        for representation in _representations(view, asset)
         if representation.kind is pp.RepresentationKind.ORIGINAL
     )
+    if len(originals) != 1:
+        raise ValueError("strip media needs exactly one original representation")
+    return originals[0]
 
 
 def _matches(
-    prod: pp.Production,
+    view: pp.ReadSession,
     tx: pp.Transaction,
     asset: pp.AssetId,
     strip: StripMedia,
@@ -373,7 +408,7 @@ def _matches(
     are gone are retired. Returns False when the strip uses different content.
     """
 
-    original = _original(prod, asset)
+    original = _original(view, asset)
     resource = original.resources[0]
     if strip.sequence is not None:
         sequence = strip.sequence
@@ -390,7 +425,7 @@ def _matches(
         if (uri, sequence.naming) not in known:
             # A sequence found under new names is recorded with them, beside
             # its former locators, once its content is the recorded content.
-            verification = prod.verify_resource(
+            verification = view.verify_resource(
                 resource.id, sequence.directory, sequence_naming=sequence.naming
             )
             if verification is not pp.ContentVerification.MATCHES:
@@ -412,7 +447,7 @@ def _matches(
             outcome = tx.observe_resource_content(resource.id, path)
             if outcome is pp.ContentObservationOutcome.CHANGED:
                 return False
-    elif prod.verify_resource(resource.id, path) is pp.ContentVerification.MATCHES:
+    elif view.verify_resource(resource.id, path) is pp.ContentVerification.MATCHES:
         tx.confirm_locator(resource.id, uri)
     else:
         return False
@@ -454,7 +489,8 @@ def _import(tx: pp.Transaction, strip: StripMedia, uuid: str) -> pp.AssetId:
         )
     asset = tx.import_media(source, strip.name)
     tx.add_external_identifier(
-        pp.AssetRef(asset), pp.ExternalIdentifier(APPLICATION_SCHEME, uuid, STRIP_QUALIFIER)
+        pp.AssetRef(asset),
+        pp.ExternalIdentifier(APPLICATION_SCHEME, uuid, STRIP_QUALIFIER),
     )
     return asset
 
