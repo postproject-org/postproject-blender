@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 
 import postproject as pp
@@ -483,8 +484,7 @@ def _import(tx: pp.Transaction, strip: StripMedia, uuid: str) -> pp.AssetId:
             start=sequence.start,
             end=sequence.end,
             step=sequence.step,
-            rate_numerator=strip.rate[0],
-            rate_denominator=strip.rate[1],
+            rate=Fraction(*strip.rate),
         )
     asset = tx.import_media(source, strip.name)
     tx.add_external_identifier(
