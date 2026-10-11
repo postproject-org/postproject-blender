@@ -74,6 +74,13 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/exchange-python"
           "$RUNNER_TEMP/exchange-python/bin/pip" install --no-deps build/wheel/postproject-*-linux_x86_64.whl
           "$RUNNER_TEMP/exchange-python/bin/python" postproject/tools/prepare_exchange_knowledge.py evidence/exchange
+          POSTPROJECT_EXCHANGE_HOST_FIXTURE="$PWD/evidence/exchange" \
+            cargo test --manifest-path postproject/Cargo.toml --locked \
+            -p postproject-storage-sqlite --lib \
+            transaction::submission::tests::host_history::host_fixture::extend_native_host_history_with_deterministic_jobs \
+            -- --ignored --exact --nocapture > evidence/blender-exchange-jobs.txt
+          "$RUNNER_TEMP/exchange-python/bin/python" postproject/tools/prepare_exchange_race.py evidence/exchange
+          "$RUNNER_TEMP/exchange-python/bin/python" postproject/tools/exchange_local_resolution.py evidence/exchange
           "$RUNNER_TEMP/exchange-python/bin/python" postproject/tools/check_host_exchange.py \
             evidence/exchange > evidence/blender-native-exchange.json
       - uses: actions/upload-artifact@v6

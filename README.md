@@ -96,6 +96,9 @@ fixture directory after `--`. It captures ordinary save/render/relink commits
 between two checkpoints. Run the SDK's `tools/check_host_exchange.py` on that
 directory using an installed wheel to compare two separate passive processes,
 including provenance, artifact results and plugin-free Blender project reopen.
+CI extends the same history with typed compound knowledge, a deterministic job
+test binary and competing writer processes. Readers use distinct local root
+mappings and compare exact portable bodies after replay and reopen.
 
 ## License
 
