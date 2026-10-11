@@ -285,7 +285,7 @@ class RelinkTest(unittest.TestCase):
 
         with (
             pp.Production.create(production_path, "Shared production") as production,
-            production.transaction() as transaction,
+            production.edit() as transaction,
         ):
             transaction.set_revision_context(
                 pp.RevisionContext(pp.OriginIdentity("Kdenlive", "26.08.1"))
