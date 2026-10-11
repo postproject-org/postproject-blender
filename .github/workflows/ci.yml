@@ -64,6 +64,16 @@ jobs:
           mkdir -p evidence
           POSTPROJECT_ABI_TRACE="$PWD/evidence/blender-abi.txt" \
             tools/dev.sh blender/blender postproject
+      - name: Replay native host writes in separate passive processes
+        run: |
+          BLENDER_USER_RESOURCES="$PWD/evidence/exchange-user" \
+            blender/blender --background --factory-startup --python-exit-code 1 \
+            --python tests/exchange_handoff.py -- \
+            dist/postproject_relink-0.1.0-linux_x64.zip "$PWD/evidence/exchange"
+          python3 -m venv evidence/exchange-python
+          evidence/exchange-python/bin/pip install --no-deps build/wheel/postproject-*-linux_x86_64.whl
+          evidence/exchange-python/bin/python postproject/tools/check_host_exchange.py \
+            evidence/exchange > evidence/blender-native-exchange.json
       - uses: actions/upload-artifact@v6
         with:
           name: blender-${{ matrix.blender }}-postproject-usage
