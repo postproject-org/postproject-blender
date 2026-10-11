@@ -144,13 +144,10 @@ def record(
         for index, strip in enumerate(strips):
             if strip.paths and strip.exists():
                 groups[strip.uuid].setdefault(strip.paths, []).append(index)
-        with view.edit() as tx:
-            tx.set_revision_context(
-                pp.RevisionContext(
-                    pp.OriginIdentity("Blender", blender_version),
-                    "Record sequencer media on save",
-                )
-            )
+        with view.edit(
+            origin=pp.OriginIdentity("Blender", blender_version),
+            message="Record sequencer media on save",
+        ) as tx:
             for uuid, by_paths in groups.items():
                 asset = _asset_for(view, uuid)
                 claimed = False
@@ -287,13 +284,10 @@ def record_render(
             return None
         base = view.decision_base
         view.close()
-        with prod.edit(base) as transaction:
-            transaction.set_revision_context(
-                pp.RevisionContext(
-                    pp.OriginIdentity("Blender", blender_version),
-                    "Record completed render",
-                )
-            )
+        with prod.edit(
+            base, origin=pp.OriginIdentity("Blender", blender_version),
+            message="Record completed render",
+        ) as transaction:
             render_id = transaction.add_representation(
                 assets[0], pp.RepresentationKind.DERIVED, output
             )
@@ -314,8 +308,8 @@ def record_render(
             for name, value in values.items():
                 transaction.add_metadata(
                     pp.ActivityRef(activity_id),
-                    pp.MetadataProperty(vocabulary, name),
-                    pp.MetadataString(value),
+                    (vocabulary, name),
+                    value,
                 )
             receipt = transaction.commit()
         return RecordedRender(render_id, receipt)
@@ -348,13 +342,10 @@ def confirm_location(
         uri = pp.file_locator(path)
         known = any(locator.uri == uri for locator in resource.locators)
         view.close()
-        with prod.edit(base) as transaction:
-            transaction.set_revision_context(
-                pp.RevisionContext(
-                    pp.OriginIdentity("Blender", blender_version),
-                    "Confirm source location",
-                )
-            )
+        with prod.edit(
+            base, origin=pp.OriginIdentity("Blender", blender_version),
+            message="Confirm source location",
+        ) as transaction:
             if not known:
                 transaction.confirm_locator(resource.id, uri)
             return transaction.commit()
@@ -398,7 +389,7 @@ def _original(view: pp.ReadSession, asset: pp.AssetId) -> pp.Representation:
 
 def _matches(
     view: pp.ReadSession,
-    tx: pp.Transaction,
+    tx: pp.Edit,
     asset: pp.AssetId,
     strip: StripMedia,
 ) -> bool:
@@ -456,7 +447,7 @@ def _matches(
 
 
 def _retire_vanished(
-    tx: pp.Transaction,
+    tx: pp.Edit,
     resource: pp.Resource,
     current: str,
     naming: pp.SequenceNaming | None = None,
@@ -474,7 +465,7 @@ def _retire_vanished(
             tx.retire_locator(locator.id)
 
 
-def _import(tx: pp.Transaction, strip: StripMedia, uuid: str) -> pp.AssetId:
+def _import(tx: pp.Edit, strip: StripMedia, uuid: str) -> pp.AssetId:
     source: pp.MediaSource = pp.FileSource(strip.paths[0])
     if strip.sequence is not None:
         sequence = strip.sequence
