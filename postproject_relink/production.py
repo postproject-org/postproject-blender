@@ -466,7 +466,7 @@ def _retire_vanished(
 
 
 def _import(tx: pp.Edit, strip: StripMedia, uuid: str) -> pp.AssetId:
-    source: pp.MediaSource = pp.FileSource(strip.paths[0])
+    source: pp.MediaSource = strip.paths[0]
     if strip.sequence is not None:
         sequence = strip.sequence
         source = pp.ImageSequenceSource(
