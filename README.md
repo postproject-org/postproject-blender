@@ -90,7 +90,7 @@ CI runs them nightly against PostProject `main` on Blender 5.2.2, and on the
 newest 5.3 alpha without blocking. PostProject's `blender-pilot` workflow
 calls the same workflow for a PostProject revision.
 
-The development SDK's exchange APIs have a separate host fixture:
+The SDK's exchange APIs have a separate host fixture:
 `tests/exchange_handoff.py`, run in background Blender with the package and a new
 fixture directory after `--`. It captures ordinary save/render/relink commits
 between two checkpoints. Run the SDK's `tools/check_host_exchange.py` on that
