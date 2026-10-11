@@ -38,6 +38,7 @@ def main() -> int:
     stage = ROOT / "build" / platform / PACKAGE.name
     shutil.rmtree(stage.parent, ignore_errors=True)
     shutil.copytree(PACKAGE, stage, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy2(ROOT / "LICENSE", stage / "LICENSE")
     (stage / "wheels").mkdir()
     shutil.copy2(args.wheel, stage / "wheels" / args.wheel.name)
     manifest = stage / "blender_manifest.toml"
