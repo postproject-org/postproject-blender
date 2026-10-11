@@ -73,6 +73,7 @@ jobs:
             "${exchange_packages[0]}" "$PWD/evidence/exchange"
           python3 -m venv "$RUNNER_TEMP/exchange-python"
           "$RUNNER_TEMP/exchange-python/bin/pip" install --no-deps build/wheel/postproject-*-linux_x86_64.whl
+          "$RUNNER_TEMP/exchange-python/bin/python" postproject/tools/prepare_exchange_knowledge.py evidence/exchange
           "$RUNNER_TEMP/exchange-python/bin/python" postproject/tools/check_host_exchange.py \
             evidence/exchange > evidence/blender-native-exchange.json
       - uses: actions/upload-artifact@v6
