@@ -54,14 +54,14 @@ The extension bundles one PostProject platform wheel, which carries the
 Python binding and the native library of the same build. `tools/build.py`
 builds the package for that wheel's platform:
 
-The development extension uses PostProject 0.8 with ordinary UUIDs and nominal
+The development extension uses PostProject 0.9 with ordinary UUIDs and nominal
 ID hints. Media decisions use coherent reads; saves, renders and confirmed
 relinks commit explicitly and report their own revision. A competing locator
 change requires a fresh decision. Stored strip identifiers keep their format.
 
 ```sh
 tools/build.py --blender /path/to/blender \
-  --wheel postproject-0.8.0a1-py3-none-manylinux_2_28_x86_64.whl
+  --wheel postproject-0.9.0a1-py3-none-manylinux_2_28_x86_64.whl
 ```
 
 To build both from a PostProject checkout and run the tests in background

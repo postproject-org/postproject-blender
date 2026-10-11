@@ -53,7 +53,8 @@ project = root / "receiving.blend"
 bpy.ops.wm.save_as_mainfile(filepath=str(project))
 strip_uuid = strip["postproject_uuid"]
 with pp.Production.open(root / "authority.pproj") as source:
-    assert len(tuple(source.assets)) == 1
+    with source.read_session() as view:
+        assert len(tuple(view.assets())) == 1
     source.export_checkpoint(root / "later.ppxc")
 
 scene.render.image_settings.media_type = "IMAGE"
@@ -69,7 +70,8 @@ assert Path(bpy.path.abspath(strip.filepath)) == moved
 bpy.ops.wm.save_as_mainfile(filepath=str(project))
 
 with pp.Production.open(root / "authority.pproj") as source:
-    (asset,) = tuple(source.assets)
+    with source.read_session() as view:
+        (asset,) = tuple(view.assets())
     assert any(
         identifier.qualifier == "org.blender:strip_uuid"
         and identifier.value == strip_uuid

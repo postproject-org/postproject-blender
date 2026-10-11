@@ -305,7 +305,8 @@ class RelinkTest(unittest.TestCase):
         self.save()
 
         with pp.Production.open(production_path) as production:
-            assets = tuple(production.assets)
+            with production.read_session() as view:
+                assets = tuple(view.assets())
             self.assertEqual(len(assets), 1)
             identifiers = production.external_identifiers[pp.AssetRef(assets[0].id)]
         self.assertEqual(
@@ -329,7 +330,8 @@ class RelinkTest(unittest.TestCase):
         import postproject as pp
 
         with pp.Production.open(self.root / "film.pproj") as production:
-            (asset,) = tuple(production.assets)
+            with production.read_session() as view:
+                (asset,) = tuple(view.assets())
             representations = production.representations[asset.id]
             render = next(
                 item

@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "postproject_relink"
-version = "0.2.0"
+version = "0.3.0"
 name = "PostProject Relink"
 tagline = "Relink missing sequencer media by content"
 maintainer = "PostProject contributors"

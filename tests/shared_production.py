@@ -45,7 +45,8 @@ def record_and_render():
     import postproject as pp
 
     with pp.Production.open(ROOT / "shared.pproj") as production:
-        (asset,) = tuple(production.assets)
+        with production.read_session() as view:
+            (asset,) = tuple(view.assets())
         qualifiers = {
             identifier.qualifier
             for identifier in production.external_identifiers[pp.AssetRef(asset.id)]
