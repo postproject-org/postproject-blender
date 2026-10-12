@@ -13,8 +13,10 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cargo build --release --locked -p postproject-ffi --manifest-path "$postproject/Cargo.toml"
 rm -rf "$root/build/wheel" "$root/dist"
 python3 -m pip wheel --no-deps --quiet "$postproject/python" --wheel-dir "$root/build/wheel/neutral"
+python3 "$postproject/tools/collect_native_licenses.py" "$root/build/wheel/native-licenses"
 python3 "$postproject/tools/build_platform_wheel.py" "$root"/build/wheel/neutral/postproject-*.whl \
-  "$postproject/target/release/libpostproject.so" linux_x86_64 --output-dir "$root/build/wheel"
+  "$postproject/target/release/libpostproject.so" linux_x86_64 --output-dir "$root/build/wheel" \
+  --licenses "$root/build/wheel/native-licenses"
 python3 "$root/tools/build.py" --blender "$blender" \
   --wheel "$(ls "$root"/build/wheel/postproject-*-linux_x86_64.whl)"
 "$root/tools/test.sh" "$blender" "$(ls "$root"/dist/*.zip)"
