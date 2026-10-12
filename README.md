@@ -50,6 +50,9 @@ Disable or uninstall the extension and Blender behaves as before. The
 
 ## Build and test
 
+The [extension review packet](ADOPTION.md) gives the short installation
+walkthrough, qualified platform, fallback and distribution status.
+
 The extension bundles one PostProject platform wheel, which carries the
 Python binding and the native library of the same build. `tools/build.py`
 builds the package for that wheel's platform:
