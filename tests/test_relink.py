@@ -306,11 +306,10 @@ class RelinkTest(unittest.TestCase):
 
         with (
             pp.Production.create(production_path, "Shared production") as production,
-            production.edit() as transaction,
+            production.edit(
+                origin=pp.OriginIdentity("Kdenlive", "26.08.2")
+            ) as transaction,
         ):
-            transaction.set_revision_context(
-                pp.RevisionContext(pp.OriginIdentity("Kdenlive", "26.08.1"))
-            )
             asset = transaction.import_media(movie, "A001")
             transaction.add_external_identifier(
                 pp.AssetRef(asset),
