@@ -72,7 +72,7 @@ Blender:
 
 ```sh
 git clone https://github.com/postproject-org/postproject
-tools/fetch_blender.py 5.2.2 blender    # or 5.3-alpha for today's daily build
+tools/fetch_blender.py 5.2.2 blender    # or 5.3-beta for today's daily build
 tools/dev.sh blender/blender postproject
 ```
 
@@ -90,7 +90,7 @@ OpenAssetIO Manager. Its Blender driver is
 PostProject binding rather than editing the production database.
 
 CI runs them nightly against PostProject `main` on Blender 5.2.2, and on the
-newest 5.3 alpha without blocking. PostProject's `blender-pilot` workflow
+newest 5.3 beta without blocking. PostProject's `blender-pilot` workflow
 calls the same workflow for a PostProject revision.
 
 The SDK's exchange APIs have a separate host fixture:

@@ -35,12 +35,12 @@ jobs:
   blender:
     name: Blender ${{ matrix.blender }}
     runs-on: ubuntu-latest
-    # The alpha is Blender's moving main branch; it reports, but never blocks.
-    continue-on-error: ${{ matrix.blender == '5.3-alpha' }}
+    # The development beta reports regressions without blocking stable support.
+    continue-on-error: ${{ matrix.blender == '5.3-beta' }}
     strategy:
       fail-fast: false
       matrix:
-        blender: ["5.2.2", "5.3-alpha"]
+        blender: ["5.2.2", "5.3-beta"]
     steps:
       - uses: actions/checkout@v7
         with:
