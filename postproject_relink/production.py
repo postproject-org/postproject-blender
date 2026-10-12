@@ -190,7 +190,7 @@ def _known_assets(view: pp.ReadSession, strip: StripMedia) -> tuple[pp.AssetId, 
     """Return exact current-locator candidates for explicit host adoption."""
 
     if strip.sequence is None:
-        locator = pp.LocatorIdentity(pp.file_locator(strip.paths[0]))
+        locator = strip.paths[0]
     else:
         locator = pp.LocatorIdentity(
             pp.file_locator(strip.sequence.directory), strip.sequence.naming
@@ -198,7 +198,7 @@ def _known_assets(view: pp.ReadSession, strip: StripMedia) -> tuple[pp.AssetId, 
     assets: dict[pp.AssetId, None] = {}
     cursor = None
     while True:
-        page = view.find_known_media_by_locator(locator, limit=100, cursor=cursor)
+        page = view.find_known_media(locator, limit=100, cursor=cursor)
         assets.update(dict.fromkeys(match.asset_id for match in page.items))
         if page.next_cursor is None:
             return tuple(assets)

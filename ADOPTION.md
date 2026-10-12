@@ -20,6 +20,10 @@ save/reopen, moved sequences, ambiguous files, read-only extension files,
 completed-render provenance and disabled fallback. This is automated host
 evidence; an interactive human usability pass is not claimed.
 
+The revised 0.9 lookup uses ordinary file paths for adoption and explicit
+sequence naming for image collections. Its rebuilt Linux package passes the
+same 24 tests in Blender 5.2.2, with the future-version test still skipped.
+
 The OBS → Blender handoff adopts the recording's identity and preserves its
 capture activity and technical metadata. Kdenlive → Blender → Manager also
 passes adoption, render provenance, moved media, competing writes and staleness.
