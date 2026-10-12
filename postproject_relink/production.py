@@ -285,7 +285,8 @@ def record_render(
         base = view.decision_base
         view.close()
         with prod.edit(
-            base, origin=pp.OriginIdentity("Blender", blender_version),
+            base,
+            origin=pp.OriginIdentity("Blender", blender_version),
             message="Record completed render",
         ) as transaction:
             render_id = transaction.add_representation(
@@ -343,7 +344,8 @@ def confirm_location(
         known = any(locator.uri == uri for locator in resource.locators)
         view.close()
         with prod.edit(
-            base, origin=pp.OriginIdentity("Blender", blender_version),
+            base,
+            origin=pp.OriginIdentity("Blender", blender_version),
             message="Confirm source location",
         ) as transaction:
             if not known:
