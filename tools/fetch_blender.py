@@ -3,7 +3,7 @@
 """Download and unpack a Linux Blender build for the tests.
 
 `5.2.2` is the pinned release; any other value names the newest daily build
-of that version, such as `5.3-alpha`. Each download is checked against its
+of that version, such as `5.3-beta`. Each download is checked against its
 published SHA-256.
 """
 
