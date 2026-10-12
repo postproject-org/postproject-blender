@@ -126,6 +126,27 @@ class RelinkTest(unittest.TestCase):
     def find(self):
         return bpy.ops.postproject.find_missing_media()
 
+    def test_read_only_extension_files_allow_save_and_relink(self):
+        extension = Path(sys.modules[MODULE].__file__).parent
+        paths = [extension, *extension.rglob("*")]
+        permissions = {path: path.stat().st_mode & 0o777 for path in paths}
+        try:
+            for path, mode in permissions.items():
+                path.chmod(mode & ~0o222)
+            movie = make_movie(self.root / "A001.mkv", (1, 0, 0))
+            self.editor.strips.new_movie("A001", str(movie), 1, 1)
+            self.save()
+            moved = self.root / "renamed.mkv"
+            movie.rename(moved)
+            self.assertEqual(self.find(), {"FINISHED"})
+            self.save_and_reopen()
+            self.assertEqual(absolute(self.strip_named("A001").filepath), moved)
+            self.assertTrue(self.blend.with_suffix(".pproj").is_file())
+            self.assertEqual(set(extension.rglob("*")), set(paths[1:]))
+        finally:
+            for path, mode in permissions.items():
+                path.chmod(mode)
+
     def test_adapter_returns_its_commit_and_reports_unchanged_save(self):
         from bl_ext.user_default.postproject_relink import production
 
