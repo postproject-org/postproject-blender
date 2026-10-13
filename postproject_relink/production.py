@@ -479,7 +479,7 @@ def _import(tx: pp.Edit, strip: StripMedia, uuid: str) -> pp.AssetId:
             step=sequence.step,
             rate=Fraction(*strip.rate),
         )
-    asset = tx.import_media(source, strip.name)
+    asset = tx.import_media(source, strip.name).asset_id
     tx.add_external_identifier(
         pp.AssetRef(asset),
         pp.ExternalIdentifier(APPLICATION_SCHEME, uuid, STRIP_QUALIFIER),

@@ -257,7 +257,7 @@ class RelinkTest(unittest.TestCase):
             view.edit() as edit,
         ):
             for _ in range(2):
-                asset = edit.import_media(media)
+                asset = edit.import_media(media).asset_id
                 edit.add_external_identifier(
                     pp.AssetRef(asset),
                     pp.ExternalIdentifier(
@@ -310,7 +310,7 @@ class RelinkTest(unittest.TestCase):
                 origin=pp.OriginIdentity("Kdenlive", "26.08.2")
             ) as transaction,
         ):
-            asset = transaction.import_media(movie, "A001")
+            asset = transaction.import_media(movie, "A001").asset_id
             transaction.add_external_identifier(
                 pp.AssetRef(asset),
                 pp.ExternalIdentifier(
