@@ -260,7 +260,7 @@ def record_render(
     """Record one completed render when its sources name one logical asset.
 
     Blender exposes completion, but not a complete worker lifecycle. This is
-    observed provenance rather than a claimed PostProject job or recipe.
+    observed provenance without a claimed PostProject worker lifecycle.
     """
 
     if not production.is_file() or not output.is_file():
@@ -289,29 +289,25 @@ def record_render(
             origin=pp.OriginIdentity("Blender", blender_version),
             message="Record completed render",
         ) as transaction:
-            render_id = transaction.add_representation(
-                assets[0], pp.RepresentationKind.DERIVED, output
-            )
-            activity_id = transaction.create_activity(
+            vocabulary = "https://postproject.org/ns/blender/1"
+            registered = transaction.register_outputs(
+                ((assets[0], pp.RepresentationKind.DERIVED, output),),
                 pp.ActivitySpec(
                     "org.blender:render",
-                    inputs=tuple(pp.ActivityEdge(item) for item in source_ids),
-                    outputs=(pp.ActivityEdge(render_id),),
-                )
+                    inputs=source_ids,
+                    tool=pp.ToolIdentity("Blender", blender_version),
+                    parameters={
+                        (vocabulary, "scene"): facts.scene,
+                        (vocabulary, "engine"): facts.engine,
+                        (
+                            vocabulary,
+                            "frame-range",
+                        ): f"{facts.frame_start}-{facts.frame_end}",
+                        (vocabulary, "output-format"): facts.output_format,
+                    },
+                ),
             )
-            vocabulary = "https://postproject.org/ns/blender/1"
-            values = {
-                "scene": facts.scene,
-                "engine": facts.engine,
-                "frame-range": f"{facts.frame_start}-{facts.frame_end}",
-                "output-format": facts.output_format,
-            }
-            for name, value in values.items():
-                transaction.add_metadata(
-                    pp.ActivityRef(activity_id),
-                    (vocabulary, name),
-                    value,
-                )
+            render_id = registered.outputs[0].representation_id
             receipt = transaction.commit()
         return RecordedRender(render_id, receipt)
 

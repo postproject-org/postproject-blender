@@ -365,9 +365,12 @@ class RelinkTest(unittest.TestCase):
                 production.evaluate_artifact(render.id).state,
                 pp.ArtifactKnowledgeState.CURRENT,
             )
-            self.assertFalse(
-                production.artifact_reproducibility(render.id).reproducible
-            )
+            self.assertEqual(activity.tool.name, "Blender")
+            self.assertEqual(activity.tool.version, bpy.app.version_string)
+            self.assertEqual(len(production.metadata[pp.ActivityRef(activity.id)]), 4)
+            # This reports recorded recipe conditions, never executable reproduction.
+            self.assertTrue(production.artifact_reproducibility(render.id).reproducible)
+            self.assertIsNone(production.dependency_set(render.id))
 
     def test_renamed_movie_is_relinked_by_content(self):
         movie = make_movie(self.root / "rushes" / "A001.mkv", (1, 0, 0))

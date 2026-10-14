@@ -40,8 +40,8 @@ reviewed by Blender's developers.
 - Nothing runs when a file opens unless *Find Missing Media When Opening* is
   enabled in the extension's preferences.
 - After a completed still render, the extension records the existing output as
-  a derived representation with its source dependency and observed Blender
-  settings. It does not invent a PostProject job: Blender exposes no reliable
+  a derived representation with its consumed representation and observed Blender
+  tool/version/settings in one edit. It does not invent a PostProject job: Blender exposes no reliable
   failure callback for an extension-owned worker lifecycle.
 
 Disable or uninstall the extension and Blender behaves as before. The
