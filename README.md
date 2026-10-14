@@ -39,6 +39,9 @@ reviewed by Blender's developers.
   else is reported and left to *Find Missing Files*. The accepted locations are
   committed against their original decision before Blender paths are changed;
   competing locator changes leave the paths untouched.
+  An already recorded file address may be reused with positive sampled evidence;
+  a newly discovered file requires full verification. Sequence verification
+  explicitly uses sampled collection evidence after complete frame coverage.
 - Nothing runs when a file opens unless *Find Missing Media When Opening* is
   enabled in the extension's preferences.
 - After a completed still render, the extension records the existing output as

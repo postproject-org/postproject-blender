@@ -565,7 +565,33 @@ def _relink(
         try:
             selection = resolution.select_verified()
         except pp.ConflictError as failure:
-            return Relink(strip.uuid, strip.name, "missing", detail=str(failure))
+            # Reuse an already recorded address with positive sampled evidence.
+            # This host policy cannot certify a newly discovered file by samples.
+            if (
+                resource.state is not pp.ResourceResolutionState.ONLINE_AT_KNOWN_LOCATOR
+                or len(resource.candidates) != 1
+            ):
+                return Relink(strip.uuid, strip.name, "missing", detail=str(failure))
+            candidate = resource.candidates[0]
+            kinds = {item.kind for item in candidate.evidence}
+            blocked = {
+                pp.EvidenceKind.SEARCH_TRUNCATED,
+                pp.EvidenceKind.DISCOVERY_ERROR,
+                pp.EvidenceKind.FINGERPRINT_NOT_VERIFIED,
+                pp.EvidenceKind.FINGERPRINT_MISMATCH,
+                pp.EvidenceKind.CONFLICTING_CANDIDATE,
+            }
+            if (
+                pp.EvidenceKind.PARTIAL_FINGERPRINT_MATCH not in kinds
+                or kinds & blocked
+                or any(item.kind in blocked for item in resource.evidence)
+            ):
+                return Relink(strip.uuid, strip.name, "missing", detail=str(failure))
+            selection = pp.RelinkSelection(
+                base,
+                resolution.representation_id,
+                (pp.RelinkLocation(resource.resource_id, candidate),),
+            )
         candidate = selection.locations[0].candidate
     else:
         # Explicit sequence policy: complete frames plus recorded sampled
