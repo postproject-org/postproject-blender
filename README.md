@@ -95,6 +95,11 @@ CI runs them nightly against PostProject `main` on Blender 5.2.2, and on the
 newest 5.3 beta without blocking. PostProject's `blender-pilot` workflow
 calls the same workflow for a PostProject revision.
 
+The ABI-57 [qualification run](https://github.com/postproject-org/postproject/actions/runs/38621416435)
+passes stable 5.2.2 and lint. Optional 5.3 beta `346d005c9994` fails the project
+variable relocation and completed-render fixtures. That preview is not a
+qualified target; stable support remains scoped to 5.2.2.
+
 The SDK's exchange APIs have a separate host fixture:
 `tests/exchange_handoff.py`, run in background Blender with the package and a new
 fixture directory after `--`. It captures ordinary save/render/relink commits
