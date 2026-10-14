@@ -36,7 +36,9 @@ reviewed by Blender's developers.
   folders the media was in before. A strip is relinked through Blender's
   `bpy.data.file_path_foreach()` only when one file matches by content; an
   image sequence is relinked with all its frames or not at all. Everything
-  else is reported and left to *Find Missing Files*.
+  else is reported and left to *Find Missing Files*. The accepted locations are
+  committed against their original decision before Blender paths are changed;
+  competing locator changes leave the paths untouched.
 - Nothing runs when a file opens unless *Find Missing Media When Opening* is
   enabled in the extension's preferences.
 - After a completed still render, the extension records the existing output as
@@ -58,7 +60,7 @@ Python binding and the native library of the same build. `tools/build.py`
 builds the package for that wheel's platform:
 
 The development extension uses PostProject 0.9 with ordinary UUIDs and nominal
-ID hints. Media decisions use coherent reads; saves, renders and confirmed
+ID hints and development C ABI 57. Media decisions use coherent reads; saves, renders and confirmed
 relinks commit explicitly and report their own revision. A competing locator
 change requires a fresh decision. Stored strip identifiers keep their format.
 

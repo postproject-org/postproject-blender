@@ -82,6 +82,7 @@ class Relink:
     #: Old absolute path to new absolute path, for every file of the strip.
     paths: dict[Path, Path] = field(default_factory=dict)
     detail: str | None = None
+    selection: pp.RelinkSelection | None = None
 
 
 @dataclass(frozen=True)
@@ -236,13 +237,14 @@ def find(
         resolutions = view.resolve(
             list(wanted),
             search_directories=sorted(d for d in directories if d.is_dir()),
+            verification=pp.VerificationMode.CONTENT,
         )
         originals = {asset: _original(view, asset).id for asset in wanted}
         for resolution in resolutions:
             if resolution.representation_id != originals[resolution.asset_id]:
                 continue
             for strip in wanted[resolution.asset_id]:
-                results.append(_relink(strip, resolution))
+                results.append(_relink(strip, resolution, view.decision_base))
         return results
     finally:
         view.close()
@@ -310,6 +312,43 @@ def record_render(
             render_id = registered.outputs[0].representation_id
             receipt = transaction.commit()
         return RecordedRender(render_id, receipt)
+
+
+def confirm_relinks(
+    production: Path,
+    results: list[Relink],
+    *,
+    blender_version: str,
+) -> pp.CommitReceipt | None:
+    """Confirm the original choices together before applying Blender paths."""
+    chosen = [result for result in results if result.outcome == "relinked"]
+    if not chosen:
+        return None
+    selections = []
+    for result in chosen:
+        if result.selection is None:
+            raise ValueError("relink result has no original selection")
+        selections.append(result.selection)
+    base = selections[0].base
+    if any(selection.base != base for selection in selections):
+        raise ValueError("relink results belong to different decisions")
+    with pp.Production.open(production) as prod, prod.read_session() as view:
+        for result, selection in zip(chosen, selections, strict=True):
+            asset = _asset_for(view, result.uuid)
+            if (
+                asset is None
+                or _original(view, asset).id != selection.representation_id
+            ):
+                raise ValueError("strip association changed; discard the relink")
+        view.close()
+        with prod.edit(
+            base=base,
+            origin=pp.OriginIdentity("Blender", blender_version),
+            message="Confirm sequencer relink locations",
+        ) as edit:
+            for selection in selections:
+                edit.confirm_selection(selection)
+            return edit.commit()
 
 
 def confirm_location(
@@ -501,41 +540,71 @@ _CONTENT_EVIDENCE = {
 _SEQUENCE_EVIDENCE = _CONTENT_EVIDENCE | {pp.EvidenceKind.PARTIAL_FINGERPRINT_MATCH}
 
 
-def _relink(strip: StripMedia, resolution: pp.RepresentationResolution) -> Relink:
+def _relink(
+    strip: StripMedia,
+    resolution: pp.RepresentationResolution,
+    base: pp.DecisionBase,
+) -> Relink:
+    if len(resolution.resources) != 1:
+        return Relink(
+            strip.uuid,
+            strip.name,
+            "error",
+            detail="strip needs one file or compact sequence",
+        )
     resource = resolution.resources[0]
-    state = resource.state
-    if state is pp.ResourceResolutionState.ONLINE_AT_KNOWN_LOCATOR:
-        candidate = resource.candidates[0]
-    elif state is pp.ResourceResolutionState.AMBIGUOUS:
+    if resource.state is pp.ResourceResolutionState.AMBIGUOUS:
         return _unresolved(strip, "ambiguous", resource)
-    elif state in (
-        pp.ResourceResolutionState.RESOLVED_EXACT,
-        pp.ResourceResolutionState.RESOLVED_PROBABLE,
-    ):
+    if resource.state is pp.ResourceResolutionState.OFFLINE:
+        return Relink(strip.uuid, strip.name, "missing")
+    if resource.state is pp.ResourceResolutionState.ERROR:
+        return _unresolved(strip, "error", resource)
+    if resolution.availability is not pp.RepresentationAvailability.ONLINE:
+        return _unresolved(strip, "missing", resource)
+    if strip.sequence is None:
+        try:
+            selection = resolution.select_verified()
+        except pp.ConflictError as failure:
+            return Relink(strip.uuid, strip.name, "missing", detail=str(failure))
+        candidate = selection.locations[0].candidate
+    else:
+        # Explicit sequence policy: complete frames plus recorded sampled
+        # collection evidence. This preserves its limits instead of calling it full.
         if len(resource.candidates) != 1:
             return _unresolved(strip, "ambiguous", resource)
         candidate = resource.candidates[0]
-        kinds = {evidence.kind for evidence in candidate.evidence}
-        accepted = _CONTENT_EVIDENCE if strip.sequence is None else _SEQUENCE_EVIDENCE
-        if not kinds & accepted:
+        kinds = {item.kind for item in candidate.evidence}
+        incomplete = {pp.EvidenceKind.SEARCH_TRUNCATED, pp.EvidenceKind.DISCOVERY_ERROR}
+        if (
+            not kinds & _SEQUENCE_EVIDENCE
+            or kinds & incomplete
+            or any(item.kind in incomplete for item in resource.evidence)
+        ):
             return _unresolved(strip, "missing", resource)
-    elif state is pp.ResourceResolutionState.OFFLINE:
-        return Relink(strip.uuid, strip.name, "missing")
-    else:
-        return _unresolved(strip, "error", resource)
+        selection = pp.RelinkSelection(
+            base,
+            resolution.representation_id,
+            (pp.RelinkLocation(resource.resource_id, candidate),),
+        )
     found = pp.locator_file_path(candidate.uri)
     if strip.sequence is None:
         paths = {strip.paths[0]: found}
     else:
-        # A renamed sequence is found under the names of its new location.
-        naming = candidate.sequence_naming or strip.sequence.naming
+        naming = candidate.sequence_naming
+        if naming is None:
+            return Relink(
+                strip.uuid,
+                strip.name,
+                "error",
+                detail="sequence candidate has no naming",
+            )
         paths = {
             path: found / naming.filename(frame)
             for path, frame in zip(strip.paths, strip.sequence.frames(), strict=True)
         }
     if not all(new.is_file() for new in paths.values()):
         return Relink(strip.uuid, strip.name, "missing", detail="incomplete sequence")
-    return Relink(strip.uuid, strip.name, "relinked", paths)
+    return Relink(strip.uuid, strip.name, "relinked", paths, selection=selection)
 
 
 def _unresolved(

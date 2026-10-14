@@ -96,8 +96,11 @@ class POSTPROJECT_OT_find_missing_media(bpy.types.Operator):
                 missing,
                 [blend.parent, *_project_directories()],
             )
+            production.confirm_relinks(
+                path, results, blender_version=bpy.app.version_string
+            )
         except Exception as error:
-            self.report({"WARNING"}, f"{path.name} could not be read: {error}")
+            self.report({"WARNING"}, f"Relinking stopped for {path.name}: {error}")
             return {"CANCELLED"}
         paths = {}
         for result in results:
